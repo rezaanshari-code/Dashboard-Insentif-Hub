@@ -1,13 +1,13 @@
 {
   "hubs": [
-    { "key": "bogor",     "label": "Bogor",     "color": "#16a34a", "lat": -6.595, "lng": 106.816, "labelDir": "bottom", "labelOffset": [6, 20] },
-    { "key": "tangerang", "label": "Tangerang", "color": "#0d9488", "lat": -6.178, "lng": 106.630, "labelDir": "left",   "labelOffset": [-95, -6] },
-    { "key": "utara",     "label": "Utara",     "color": "#0f766e", "lat": -6.121, "lng": 106.774, "labelDir": "top",    "labelOffset": [0, -20] },
-    { "key": "bandung",   "label": "Bandung",   "color": "#14b8a6", "lat": -6.917, "lng": 107.619, "labelDir": "right",  "labelOffset": [65, 18] },
-    { "key": "yogya",     "label": "Yogya",     "color": "#9333ea", "lat": -7.797, "lng": 110.370, "labelDir": "bottom", "labelOffset": [0, 12] },
-    { "key": "semarang",  "label": "Semarang",  "color": "#e11d48", "lat": -6.966, "lng": 110.418, "labelDir": "top",    "labelOffset": [0, -12] },
-    { "key": "lampung",   "label": "Lampung",   "color": "#f97316", "lat": -5.429, "lng": 105.262, "labelDir": "right",  "labelOffset": [12, 0] },
-    { "key": "palembang", "label": "Palembang", "color": "#7c3aed", "lat": -2.990, "lng": 104.756, "labelDir": "right",  "labelOffset": [12, 0] },
-    { "key": "kediri",    "label": "Kediri",    "color": "#991b1b", "lat": -7.848, "lng": 112.017, "labelDir": "right",  "labelOffset": [12, 0] }
+    { "key": "palembang", "label": "Palembang", "color": "#7c3aed", "lat": -2.990, "lng": 104.756, "labelSide": "left" },
+    { "key": "lampung",   "label": "Lampung",   "color": "#f97316", "lat": -5.429, "lng": 105.262, "labelSide": "left" },
+    { "key": "tangerang", "label": "Tangerang", "color": "#0d9488", "lat": -6.178, "lng": 106.630, "labelSide": "left" },
+    { "key": "bogor",     "label": "Bogor",     "color": "#16a34a", "lat": -6.595, "lng": 106.816, "labelSide": "left" },
+    { "key": "utara",     "label": "Utara",     "color": "#0f766e", "lat": -6.121, "lng": 106.774, "labelSide": "left" },
+    { "key": "bandung",   "label": "Bandung",   "color": "#14b8a6", "lat": -6.917, "lng": 107.619, "labelSide": "right" },
+    { "key": "semarang",  "label": "Semarang",  "color": "#e11d48", "lat": -6.966, "lng": 110.418, "labelSide": "right" },
+    { "key": "yogya",     "label": "Yogya",     "color": "#9333ea", "lat": -7.797, "lng": 110.370, "labelSide": "right" },
+    { "key": "kediri",    "label": "Kediri",    "color": "#991b1b", "lat": -7.848, "lng": 112.017, "labelSide": "right" }
   ]
 }
