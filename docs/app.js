@@ -194,26 +194,31 @@ function renderSidebarCounts() {
 }
 
 function renderLegendAndMap() {
-  const legendList = document.getElementById("legend-list");
-  legendList.innerHTML = "";
   const active = new Set(activeHubKeys());
+  const leftCol = document.getElementById("label-col-left");
+  const rightCol = document.getElementById("label-col-right");
+  leftCol.innerHTML = "";
+  rightCol.innerHTML = "";
 
   HUBS.forEach((hub) => {
     const m = hubMetrics(hub.key);
     const isActive = active.has(hub.key);
 
-    // ---- legend card (always show all hubs, no scroll) ----
-    const item = document.createElement("div");
-    item.className = "legend-item" + (isActive ? "" : " dimmed");
-    item.style.background = hub.color;
-    item.innerHTML = `<div class="l-name">${hub.label}</div><div class="l-value">${rupiah(m.insentif)}</div>`;
-    item.addEventListener("click", () => {
-      const btn = document.querySelector(`.nav-item[data-site="${hub.key}"]`);
-      selectSite(currentSite === hub.key ? "all" : hub.key, btn);
-    });
-    legendList.appendChild(item);
+    // ---- side label box (only for active hubs; leader line drawn to it) ----
+    if (isActive) {
+      const box = document.createElement("div");
+      box.className = "leader-label";
+      box.style.background = hub.color;
+      box.dataset.hubKey = hub.key;
+      box.innerHTML = `<div class="l-name">${hub.label}</div><div class="l-value">${rupiah(m.insentif)}</div>`;
+      box.addEventListener("click", () => {
+        const btn = document.querySelector(`.nav-item[data-site="${hub.key}"]`);
+        selectSite(currentSite === hub.key ? "all" : hub.key, btn);
+      });
+      (hub.labelSide === "right" ? rightCol : leftCol).appendChild(box);
+    }
 
-    // ---- marker (only shown on map when active) ----
+    // ---- marker (only shown on map when active, no permanent tooltip) ----
     if (isActive) {
       if (markers[hub.key]) {
         markers[hub.key].setRadius(markerRadius(m.trip));
@@ -226,13 +231,6 @@ function renderLegendAndMap() {
           fillColor: hub.color,
           fillOpacity: 0.9,
         }).addTo(map);
-        const { direction, offset } = tooltipPlacement(hub.labelDir, hub.labelOffset);
-        marker.bindTooltip("Hub " + hub.label, {
-          permanent: true,
-          direction,
-          offset,
-          className: "hub-label",
-        });
         marker.on("click", () => openHubModal(hub));
         markers[hub.key] = marker;
       }
@@ -242,28 +240,55 @@ function renderLegendAndMap() {
   });
 
   fitMapToActiveHubs();
+  // Layout needs a tick to settle (labels just got added to DOM) before
+  // measuring box positions for the leader lines.
+  requestAnimationFrame(drawLeaderLines);
 }
 
 function markerRadius(trip) {
   return Math.max(6, Math.min(18, 6 + Math.sqrt(trip) * 0.6));
 }
 
-// Setiap hub bisa punya "labelDir" ("top"|"bottom"|"left"|"right") dan/atau
-// "labelOffset" custom [x,y] sendiri di hub_coords.json, supaya label nama
-// tidak numpuk di area yang padat (mis. cluster Jabodetabek). Kalau
-// labelOffset nggak diisi, dipakai jarak default sesuai labelDir.
-function tooltipPlacement(labelDir, customOffset) {
-  const defaults = {
-    top:    { direction: "top",    offset: [0, -10] },
-    bottom: { direction: "bottom", offset: [0, 10] },
-    left:   { direction: "left",   offset: [-10, 0] },
-    right:  { direction: "right",  offset: [10, 0] },
-  };
-  const base = defaults[labelDir] || defaults.right;
-  if (Array.isArray(customOffset) && customOffset.length === 2) {
-    return { direction: base.direction, offset: customOffset };
-  }
-  return base;
+// Draws dashed SVG leader lines connecting each visible side-label box to
+// its hub's actual marker position on the map. Re-run on every map
+// move/zoom/resize so the lines stay glued to the markers.
+function drawLeaderLines() {
+  const svg = document.getElementById("leader-svg");
+  const stage = document.getElementById("map-stage");
+  if (!svg || !stage || !map) return;
+
+  const stageRect = stage.getBoundingClientRect();
+  svg.setAttribute("viewBox", `0 0 ${stageRect.width} ${stageRect.height}`);
+  svg.innerHTML = "";
+
+  const active = activeHubKeys();
+  HUBS.forEach((hub) => {
+    if (!active.includes(hub.key)) return;
+    const box = document.querySelector(`.leader-label[data-hub-key="${hub.key}"]`);
+    if (!box) return;
+
+    const boxRect = box.getBoundingClientRect();
+    const isRight = hub.labelSide === "right";
+    const anchorX = (isRight ? boxRect.left : boxRect.right) - stageRect.left;
+    const anchorY = boxRect.top + boxRect.height / 2 - stageRect.top;
+
+    const point = map.latLngToContainerPoint([hub.lat, hub.lng]);
+    const midX = isRight
+      ? anchorX - Math.max(30, (anchorX - point.x) * 0.35)
+      : anchorX + Math.max(30, (point.x - anchorX) * 0.35);
+
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute(
+      "d",
+      `M ${anchorX} ${anchorY} L ${midX} ${anchorY} L ${point.x} ${point.y}`
+    );
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", hub.color);
+    path.setAttribute("stroke-width", "1.5");
+    path.setAttribute("stroke-dasharray", "4 4");
+    path.setAttribute("opacity", "0.85");
+    svg.appendChild(path);
+  });
 }
 
 function fitMapToActiveHubs() {
@@ -386,6 +411,10 @@ function initMap() {
   }).addTo(map);
   // Initial view is temporary — fitMapToActiveHubs() re-frames it
   // to the actual hub markers as soon as data loads.
+
+  // Keep leader lines glued to markers whenever the map view changes.
+  map.on("move zoom moveend zoomend", drawLeaderLines);
+  window.addEventListener("resize", () => requestAnimationFrame(drawLeaderLines));
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
