@@ -1,0 +1,38 @@
+name: Update dashboard data
+
+on:
+  schedule:
+    # Jalan tiap 30 menit. Format cron: menit jam tgl bulan hari.
+    # Ubah angka "*/30" ini kalau mau interval beda (mis. */15, atau "0 * * * *" utk tiap jam).
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}   # tombol "Run workflow" manual di tab Actions
+
+permissions:
+  contents: write   # supaya bot boleh commit & push ke repo ini
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fetch data dari Google Sheets
+        run: python3 scripts/fetch_sheets.py
+
+      - name: Commit & push kalau ada perubahan
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- docs/data.json docs/index.html; then
+            echo "Tidak ada perubahan data, skip commit."
+          else
+            git add docs/data.json docs/index.html
+            git commit -m "auto-update dashboard [$(date -u '+%Y-%m-%d %H:%M UTC')]"
+            git push
+          fi
