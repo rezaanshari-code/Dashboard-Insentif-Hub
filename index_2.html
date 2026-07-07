@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Insentif Dashboard Pengiriman</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">IS</div>
+      <div class="brand-text">
+        <div class="brand-title">Insentif</div>
+        <div class="brand-sub">DASHBOARD PENGIRIMAN</div>
+      </div>
+    </div>
+
+    <nav class="nav-section">
+      <div class="nav-label">Menu</div>
+      <button class="nav-item active" data-view="overview">
+        <span class="dot dot-blue"></span> Overview
+      </button>
+      <button class="nav-item" data-view="mpp">
+        <span class="dot dot-red"></span> Distribusi MPP
+      </button>
+      <button class="nav-item" data-view="insight">
+        <span class="dot dot-amber"></span> Insight
+      </button>
+    </nav>
+
+    <nav class="nav-section">
+      <div class="nav-label">Sites</div>
+      <button class="nav-item site-all active" data-site="all">
+        <span class="chip chip-blue"></span> Semua Site
+        <span class="count" id="count-all">0</span>
+      </button>
+    </nav>
+
+    <nav class="nav-section">
+      <div class="nav-label-row">
+        <span class="chip chip-green"></span>
+        <span class="nav-label">HUB</span>
+        <span class="count" id="count-hub">0</span>
+      </div>
+      <div id="hub-list"></div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <span class="back-arrow">&larr;</span> ConnectOne
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <header class="topbar">
+      <h1 id="page-title">Overview</h1>
+      <div class="topbar-controls">
+        <button class="btn btn-primary" id="btn-full-month">Full Month</button>
+        <input type="date" id="date-from" class="input-date">
+        <input type="date" id="date-to" class="input-date">
+        <button class="btn btn-ghost" id="btn-apply">Terapkan</button>
+        <select id="month-select" class="input-select"></select>
+        <button class="btn btn-ghost" id="btn-site-scope">Semua Site</button>
+        <span class="version-pill" id="version-pill">--</span>
+        <span class="updated-pill" id="updated-pill">Update: --</span>
+        <button class="btn btn-ghost btn-icon" id="btn-refresh" title="Refresh data">&#8635; Refresh</button>
+      </div>
+    </header>
+
+    <section class="kpi-row" id="kpi-row">
+      <div class="kpi-card" style="--accent:#2563eb">
+        <div class="kpi-label">TOTAL TRIP</div>
+        <div class="kpi-value" id="kpi-trip">--</div>
+        <div class="kpi-sub" id="kpi-trip-sub">-- site</div>
+      </div>
+      <div class="kpi-card" style="--accent:#2563eb">
+        <div class="kpi-label">TOTAL DO</div>
+        <div class="kpi-value" id="kpi-do">--</div>
+      </div>
+      <div class="kpi-card" style="--accent:#2563eb">
+        <div class="kpi-label">DROP POINT</div>
+        <div class="kpi-value" id="kpi-titik">--</div>
+      </div>
+      <div class="kpi-card" style="--accent:#f59e0b">
+        <div class="kpi-label">TOTAL UJP</div>
+        <div class="kpi-value" id="kpi-ujp">--</div>
+      </div>
+      <div class="kpi-card" style="--accent:#16a34a">
+        <div class="kpi-label">TOTAL INSENTIF</div>
+        <div class="kpi-value" id="kpi-insentif">--</div>
+      </div>
+    </section>
+
+    <section class="map-panel">
+      <div class="map-panel-header">
+        <div>
+          <div class="map-title" id="map-title">Sebaran Site &mdash; 2026</div>
+          <div class="map-sub">Klik label site untuk detail</div>
+        </div>
+      </div>
+      <div class="map-body">
+        <div id="map"></div>
+        <div class="legend-list" id="legend-list"></div>
+      </div>
+    </section>
+
+    <section class="status-line" id="status-line">Memuat data dari Google Sheets&hellip;</section>
+
+  </main>
+</div>
+
+<div class="modal-backdrop" id="modal-backdrop">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modal-title">Hub</h2>
+      <button class="modal-close" id="modal-close">&times;</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
