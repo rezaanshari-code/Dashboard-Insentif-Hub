@@ -3,7 +3,7 @@ name: Update Dashboard Data
 on:
   schedule:
     - cron: "0 1 * * *"   # 08:00 WIB (UTC+7) = 01:00 UTC, tiap hari
-  workflow_dispatch: {}    # tombol "Run workflow" manual di tab Actions, kapanpun mau update
+  workflow_dispatch: {}    # tombol "Run workflow" manual di tab Actions
 
 permissions:
   contents: write
@@ -25,31 +25,45 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Fetch data & render dashboard
+      - name: Fetch data, auto-discover & geocode hub baru, render dashboard
         env:
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         run: |
           python3 - << 'PYEOF'
-          import os, json, re, sys
+          import os, json, re, sys, time
           import urllib.request, urllib.parse, urllib.error
           from datetime import datetime, timezone
 
           SPREADSHEET_ID = os.environ["SPREADSHEET_ID"]
           API_KEY = os.environ["GOOGLE_API_KEY"]
+          COORDS_PATH = "docs/hub_coords.json"
 
-          # Harus sinkron dengan "key" di docs/hub_coords.json
-          HUBS = [
-              {"key": "bogor",     "sheet": "Hub Bogor"},
-              {"key": "tangerang", "sheet": "Hub Tangerang"},
-              {"key": "utara",     "sheet": "Hub Utara"},
-              {"key": "bandung",   "sheet": "Hub Bandung"},
-              {"key": "yogya",     "sheet": "Hub Yogya"},
-              {"key": "semarang",  "sheet": "Hub Semarang"},
-              {"key": "lampung",   "sheet": "Hub Lampung"},
-              {"key": "palembang", "sheet": "Hub Palembang"},
-              {"key": "kediri",    "sheet": "Hub Kediri"},
+          # Palet warna cadangan untuk hub baru yang ke-auto-detect
+          # (dipakai bergilir kalau hub baru ditemukan)
+          FALLBACK_COLORS = [
+              "#0ea5e9", "#84cc16", "#f43f5e", "#8b5cf6",
+              "#06b6d4", "#eab308", "#ec4899", "#22c55e",
           ]
+
+          # ---------------- 1. AUTO-DISCOVER SEMUA TAB HUB ----------------
+          # Nggak perlu hardcode daftar hub lagi -- tab apapun yang namanya
+          # diawali "Hub " otomatis ikut ditarik.
+          def list_hub_sheets():
+              url = (
+                  f"https://sheets.googleapis.com/v4/spreadsheets/{SPREADSHEET_ID}"
+                  f"?fields=sheets.properties&key={API_KEY}"
+              )
+              with urllib.request.urlopen(url, timeout=30) as resp:
+                  meta = json.load(resp)
+              hubs = []
+              for s in meta.get("sheets", []):
+                  title = s["properties"]["title"]
+                  if title.startswith("Hub "):
+                      label = title[len("Hub "):].strip()
+                      key = re.sub(r"\s+", "_", label.lower())
+                      hubs.append({"key": key, "sheet": title, "label": label})
+              return hubs
 
           def fetch_sheet_rows(sheet_name):
               encoded = urllib.parse.quote(sheet_name)
@@ -70,18 +84,75 @@ jobs:
                   rows.append(dict(zip(headers, padded)))
               return rows
 
+          # ---------------- 2. AUTO-GEOCODE HUB BARU ----------------
+          def geocode_label(label):
+              query = f"{label}, Indonesia"
+              try:
+                  url = (
+                      "https://nominatim.openstreetmap.org/search"
+                      f"?q={urllib.parse.quote(query)}&format=json&limit=1"
+                  )
+                  req = urllib.request.Request(url, headers={"User-Agent": "InsentifDashboard/1.0"})
+                  with urllib.request.urlopen(req, timeout=10) as resp:
+                      results = json.load(resp)
+                  if results:
+                      return float(results[0]["lat"]), float(results[0]["lon"])
+              except Exception as e:
+                  print(f"[GEOCODE GAGAL] {label}: {e}", file=sys.stderr)
+              return None
+
+          def load_hub_coords():
+              if os.path.exists(COORDS_PATH):
+                  with open(COORDS_PATH, "r", encoding="utf-8") as f:
+                      return json.load(f).get("hubs", [])
+              return []
+
+          def save_hub_coords(hubs):
+              os.makedirs("docs", exist_ok=True)
+              with open(COORDS_PATH, "w", encoding="utf-8") as f:
+                  json.dump({"hubs": hubs}, f, ensure_ascii=False, indent=2)
+
+          # ---------------- MAIN ----------------
+          discovered = list_hub_sheets()
+          print(f"Ditemukan {len(discovered)} tab hub: {[h['sheet'] for h in discovered]}")
+
+          hub_coords = load_hub_coords()
+          existing_keys = {h["key"] for h in hub_coords}
+          color_i = 0
+
+          new_hubs = [h for h in discovered if h["key"] not in existing_keys]
+          if new_hubs:
+              print(f"\nHub baru terdeteksi: {[h['label'] for h in new_hubs]}")
+              for h in new_hubs:
+                  coords = geocode_label(h["label"])
+                  time.sleep(1.1)  # rate limit Nominatim: max 1 req/detik
+                  color = FALLBACK_COLORS[color_i % len(FALLBACK_COLORS)]
+                  color_i += 1
+                  entry = {
+                      "key": h["key"],
+                      "label": h["label"],
+                      "color": color,
+                      "lat": round(coords[0], 4) if coords else -6.2,
+                      "lng": round(coords[1], 4) if coords else 106.8,
+                      "labelDir": "right",
+                  }
+                  if not coords:
+                      print(f"  [WARNING] Geocode gagal untuk '{h['label']}', pakai koordinat default Jakarta -- edit manual docs/hub_coords.json kalau perlu.", file=sys.stderr)
+                  hub_coords.append(entry)
+                  print(f"  + {h['label']} -> lat={entry['lat']}, lng={entry['lng']}, color={entry['color']}")
+              save_hub_coords(hub_coords)
+          else:
+              print("Tidak ada hub baru.")
+
+          # ---------------- FETCH DATA TIAP HUB ----------------
           result = {"generated_at": datetime.now(timezone.utc).isoformat(), "hubs": {}}
           had_error = False
-          for hub in HUBS:
+          for hub in discovered:
               try:
                   rows = fetch_sheet_rows(hub["sheet"])
                   result["hubs"][hub["key"]] = rows
                   print(f"[OK] {hub['sheet']}: {len(rows)} baris")
-              except urllib.error.HTTPError as e:
-                  had_error = True
-                  print(f"[GAGAL] {hub['sheet']}: {e.code} {e.reason}", file=sys.stderr)
-                  result["hubs"][hub["key"]] = []
-              except urllib.error.URLError as e:
+              except (urllib.error.HTTPError, urllib.error.URLError) as e:
                   had_error = True
                   print(f"[GAGAL] {hub['sheet']}: {e}", file=sys.stderr)
                   result["hubs"][hub["key"]] = []
@@ -92,7 +163,7 @@ jobs:
           total = sum(len(v) for v in result["hubs"].values())
           print(f"\ndocs/data.json: total {total} baris ditulis")
 
-          # Render docs/template.html -> docs/index.html (isi placeholder)
+          # ---------------- RENDER TEMPLATE -> INDEX.HTML ----------------
           with open("docs/template.html", "r", encoding="utf-8") as f:
               html = f.read()
           build_id = re.sub(r"[^0-9]", "", result["generated_at"])
@@ -103,17 +174,17 @@ jobs:
           print("docs/index.html: di-render ulang dari docs/template.html")
 
           if had_error:
-              print("\nSebagian sheet gagal ditarik — cek log di atas.", file=sys.stderr)
+              print("\nSebagian sheet gagal ditarik -- cek log di atas.", file=sys.stderr)
           PYEOF
 
       - name: Commit & push kalau ada perubahan
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet -- docs/data.json docs/index.html; then
-            echo "Tidak ada perubahan data, skip commit."
+          if git diff --quiet -- docs/data.json docs/index.html docs/hub_coords.json; then
+            echo "Tidak ada perubahan, skip commit."
           else
-            git add docs/data.json docs/index.html
+            git add docs/data.json docs/index.html docs/hub_coords.json
             git commit -m "auto-update dashboard [$(date -u '+%Y-%m-%d %H:%M UTC')]"
             git push
           fi
