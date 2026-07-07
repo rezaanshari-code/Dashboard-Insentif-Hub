@@ -1,29 +1,110 @@
-name: Update dashboard data
+name: Update Dashboard Data
 
 on:
   schedule:
-    # Jalan tiap 30 menit. Format cron: menit jam tgl bulan hari.
-    # Ubah angka "*/30" ini kalau mau interval beda (mis. */15, atau "0 * * * *" utk tiap jam).
-    - cron: "*/30 * * * *"
-  workflow_dispatch: {}   # tombol "Run workflow" manual di tab Actions
+    - cron: "0 1 * * *"   # 08:00 WIB (UTC+7) = 01:00 UTC, tiap hari
+  workflow_dispatch: {}    # tombol "Run workflow" manual di tab Actions, kapanpun mau update
 
 permissions:
-  contents: write   # supaya bot boleh commit & push ke repo ini
+  contents: write
 
 jobs:
   update-data:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Pull latest
+        run: git pull origin main
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Fetch data dari Google Sheets
-        run: python3 scripts/fetch_sheets.py
+      - name: Fetch data & render dashboard
+        env:
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: |
+          python3 - << 'PYEOF'
+          import os, json, re, sys
+          import urllib.request, urllib.parse, urllib.error
+          from datetime import datetime, timezone
+
+          SPREADSHEET_ID = os.environ["SPREADSHEET_ID"]
+          API_KEY = os.environ["GOOGLE_API_KEY"]
+
+          # Harus sinkron dengan "key" di docs/hub_coords.json
+          HUBS = [
+              {"key": "bogor",     "sheet": "Hub Bogor"},
+              {"key": "tangerang", "sheet": "Hub Tangerang"},
+              {"key": "utara",     "sheet": "Hub Utara"},
+              {"key": "bandung",   "sheet": "Hub Bandung"},
+              {"key": "yogya",     "sheet": "Hub Yogya"},
+              {"key": "semarang",  "sheet": "Hub Semarang"},
+              {"key": "lampung",   "sheet": "Hub Lampung"},
+              {"key": "palembang", "sheet": "Hub Palembang"},
+              {"key": "kediri",    "sheet": "Hub Kediri"},
+          ]
+
+          def fetch_sheet_rows(sheet_name):
+              encoded = urllib.parse.quote(sheet_name)
+              url = (
+                  f"https://sheets.googleapis.com/v4/spreadsheets/{SPREADSHEET_ID}"
+                  f"/values/{encoded}?key={API_KEY}"
+              )
+              req = urllib.request.Request(url)
+              with urllib.request.urlopen(req, timeout=30) as resp:
+                  payload = json.load(resp)
+              values = payload.get("values", [])
+              if not values:
+                  return []
+              headers = values[0]
+              rows = []
+              for raw_row in values[1:]:
+                  padded = raw_row + [""] * (len(headers) - len(raw_row))
+                  rows.append(dict(zip(headers, padded)))
+              return rows
+
+          result = {"generated_at": datetime.now(timezone.utc).isoformat(), "hubs": {}}
+          had_error = False
+          for hub in HUBS:
+              try:
+                  rows = fetch_sheet_rows(hub["sheet"])
+                  result["hubs"][hub["key"]] = rows
+                  print(f"[OK] {hub['sheet']}: {len(rows)} baris")
+              except urllib.error.HTTPError as e:
+                  had_error = True
+                  print(f"[GAGAL] {hub['sheet']}: {e.code} {e.reason}", file=sys.stderr)
+                  result["hubs"][hub["key"]] = []
+              except urllib.error.URLError as e:
+                  had_error = True
+                  print(f"[GAGAL] {hub['sheet']}: {e}", file=sys.stderr)
+                  result["hubs"][hub["key"]] = []
+
+          with open("docs/data.json", "w", encoding="utf-8") as f:
+              json.dump(result, f, ensure_ascii=False, indent=2)
+
+          total = sum(len(v) for v in result["hubs"].values())
+          print(f"\ndocs/data.json: total {total} baris ditulis")
+
+          # Render docs/template.html -> docs/index.html (isi placeholder)
+          with open("docs/template.html", "r", encoding="utf-8") as f:
+              html = f.read()
+          build_id = re.sub(r"[^0-9]", "", result["generated_at"])
+          html = html.replace("{{GENERATED_AT}}", result["generated_at"])
+          html = html.replace("{{BUILD_ID}}", build_id)
+          with open("docs/index.html", "w", encoding="utf-8") as f:
+              f.write(html)
+          print("docs/index.html: di-render ulang dari docs/template.html")
+
+          if had_error:
+              print("\nSebagian sheet gagal ditarik — cek log di atas.", file=sys.stderr)
+          PYEOF
 
       - name: Commit & push kalau ada perubahan
         run: |
