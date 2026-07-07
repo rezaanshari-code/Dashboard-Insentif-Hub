@@ -226,10 +226,11 @@ function renderLegendAndMap() {
           fillColor: hub.color,
           fillOpacity: 0.9,
         }).addTo(map);
-        marker.bindTooltip(hub.label, {
+        const { direction, offset } = tooltipPlacement(hub.labelDir, hub.labelOffset);
+        marker.bindTooltip("Hub " + hub.label, {
           permanent: true,
-          direction: "right",
-          offset: [8, 0],
+          direction,
+          offset,
           className: "hub-label",
         });
         marker.on("click", () => openHubModal(hub));
@@ -245,6 +246,24 @@ function renderLegendAndMap() {
 
 function markerRadius(trip) {
   return Math.max(6, Math.min(18, 6 + Math.sqrt(trip) * 0.6));
+}
+
+// Setiap hub bisa punya "labelDir" ("top"|"bottom"|"left"|"right") dan/atau
+// "labelOffset" custom [x,y] sendiri di hub_coords.json, supaya label nama
+// tidak numpuk di area yang padat (mis. cluster Jabodetabek). Kalau
+// labelOffset nggak diisi, dipakai jarak default sesuai labelDir.
+function tooltipPlacement(labelDir, customOffset) {
+  const defaults = {
+    top:    { direction: "top",    offset: [0, -10] },
+    bottom: { direction: "bottom", offset: [0, 10] },
+    left:   { direction: "left",   offset: [-10, 0] },
+    right:  { direction: "right",  offset: [10, 0] },
+  };
+  const base = defaults[labelDir] || defaults.right;
+  if (Array.isArray(customOffset) && customOffset.length === 2) {
+    return { direction: base.direction, offset: customOffset };
+  }
+  return base;
 }
 
 function fitMapToActiveHubs() {
@@ -294,7 +313,7 @@ function selectSite(key, btnEl) {
   document.querySelectorAll(".nav-item[data-site]").forEach((b) => b.classList.remove("active"));
   document.querySelector('.nav-item[data-site="all"]').classList.toggle("active", key === "all");
   if (btnEl) btnEl.classList.add("active");
-  const title = key === "all" ? "Semua Site" : "Hub " + HUBS.find((h) => h.key === key).label;
+  const title = key === "all" ? "All Hub" : "Hub " + HUBS.find((h) => h.key === key).label;
   document.getElementById("btn-site-scope").textContent = title;
   renderKpis();
   renderLegendAndMap();
