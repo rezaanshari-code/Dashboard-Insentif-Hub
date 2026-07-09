@@ -211,10 +211,7 @@ function renderLegendAndMap() {
       box.style.background = hub.color;
       box.dataset.hubKey = hub.key;
       box.innerHTML = `<div class="l-name">${hub.label}</div><div class="l-value">${rupiah(m.insentif)}</div>`;
-      box.addEventListener("click", () => {
-        const btn = document.querySelector(`.nav-item[data-site="${hub.key}"]`);
-        selectSite(currentSite === hub.key ? "all" : hub.key, btn);
-      });
+      box.addEventListener("click", () => openHubModal(hub));
       (hub.labelSide === "right" ? rightCol : leftCol).appendChild(box);
     }
 
