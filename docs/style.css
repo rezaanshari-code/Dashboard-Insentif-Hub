@@ -354,13 +354,66 @@ body {
 .modal-row span:first-child { color: var(--text-mute); }
 .modal-row span:last-child { font-weight: 700; }
 
+/* ---------------- DISTRIBUSI MPP VIEW ---------------- */
+.view { display: flex; flex-direction: column; gap: 20px; }
+.kpi-row-4 { grid-template-columns: repeat(4, 1fr); }
+
+.chart-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.chart-panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px 12px;
+}
+
+.chart-title { font-size: 15px; font-weight: 700; }
+.chart-sub { font-size: 12px; color: var(--text-mute); margin-top: 2px; margin-bottom: 10px; }
+
+.chart-canvas-wrap {
+  position: relative;
+  height: 280px;
+}
+
+.driver-stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  padding: 18px 20px 20px;
+}
+
+.driver-stat-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.driver-stat-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-mute);
+  margin-bottom: 8px;
+}
+.driver-stat-value { font-size: 22px; font-weight: 800; }
+.driver-stat-sub { font-size: 11.5px; color: var(--text-mute); margin-top: 4px; }
+
 /* ---------------- RESPONSIVE ---------------- */
 @media (max-width: 1100px) {
   .kpi-row { grid-template-columns: repeat(2, 1fr); }
+  .kpi-row-4 { grid-template-columns: repeat(2, 1fr); }
   .map-body { grid-template-columns: 1fr; }
+  .chart-row { grid-template-columns: 1fr; }
+  .driver-stats-row { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 720px) {
   .app { flex-direction: column; }
   .sidebar { width: 100%; }
   .kpi-row { grid-template-columns: 1fr; }
+  .kpi-row-4 { grid-template-columns: 1fr; }
+  .driver-stats-row { grid-template-columns: 1fr; }
 }
