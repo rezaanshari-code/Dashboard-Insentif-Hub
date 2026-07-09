@@ -166,6 +166,7 @@ function renderAll() {
   renderSidebarCounts();
   renderLegendAndMap();
   renderPageTitle();
+  if (isMppViewActive()) renderMppView();
 }
 
 function renderPageTitle() {
@@ -339,9 +340,19 @@ function selectSite(key, btnEl) {
   document.getElementById("btn-site-scope").textContent = title;
   renderKpis();
   renderLegendAndMap();
+  if (isMppViewActive()) renderMppView();
+}
+
+function isMppViewActive() {
+  const el = document.getElementById("view-mpp");
+  return el && el.style.display !== "none";
 }
 
 function wireControls() {
+  document.querySelectorAll(".nav-item[data-view]").forEach((btn) => {
+    btn.addEventListener("click", () => switchView(btn.dataset.view, btn));
+  });
+
   document.querySelector('.nav-item[data-site="all"]').addEventListener("click", (e) => selectSite("all", e.currentTarget));
 
   document.getElementById("month-select").addEventListener("change", (e) => {
@@ -397,6 +408,210 @@ getFilteredRows = function (hubKey) {
     return monthKey(d) === currentMonth;
   });
 };
+
+// ---------------- VIEW SWITCHING (sidebar Menu) ----------------
+
+const VIEW_TITLES = { overview: "Overview", mpp: "Distribusi MPP", insight: "Insight" };
+
+function switchView(view, btnEl) {
+  document.querySelectorAll(".nav-item[data-view]").forEach((b) => b.classList.remove("active"));
+  if (btnEl) btnEl.classList.add("active");
+
+  ["overview", "mpp", "insight"].forEach((v) => {
+    document.getElementById("view-" + v).style.display = v === view ? "" : "none";
+  });
+  document.getElementById("page-title").textContent = VIEW_TITLES[view] || "Overview";
+
+  if (view === "mpp") renderMppView();
+}
+
+// ---------------- DISTRIBUSI MPP ----------------
+
+let mppMonthlyChart = null;
+let mppHistogramChart = null;
+
+const MPP_FIELD = "Insentif per MPP";
+const MONTH_NAMES_ID = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
+
+// Semua baris MPP untuk site aktif, HANYA menghormati filter bulan yang
+// sedang dipilih di topbar (dipakai untuk KPI card & histogram & daftar driver).
+function mppValuesFiltered() {
+  const keys = activeHubKeys();
+  const values = [];
+  keys.forEach((k) => {
+    getFilteredRows(k).forEach((r) => {
+      values.push(toNumber(r[MPP_FIELD]));
+    });
+  });
+  return values;
+}
+
+// Semua baris MPP untuk site aktif, TANPA filter bulan (dipakai untuk
+// grafik "Kategori MPP per Bulan" yang memang menampilkan tren semua bulan).
+function mppRowsAllMonths() {
+  const keys = activeHubKeys();
+  const rows = [];
+  keys.forEach((k) => {
+    (RAW[k] || []).forEach((r) => rows.push(r));
+  });
+  return rows;
+}
+
+function mppCategory(value) {
+  if (value > 1500000) return "high";
+  if (value < 500000) return "low";
+  return "mid";
+}
+
+function mppCategoryCounts(values) {
+  let high = 0, mid = 0, low = 0;
+  values.forEach((v) => {
+    const c = mppCategory(v);
+    if (c === "high") high++;
+    else if (c === "low") low++;
+    else mid++;
+  });
+  return { high, mid, low, total: values.length };
+}
+
+function mppStats(values) {
+  const n = values.length;
+  if (!n) return { max: 0, min: 0, mean: 0, std: 0, n: 0 };
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const mean = values.reduce((a, b) => a + b, 0) / n;
+  const variance = values.reduce((a, b) => a + (b - mean) * (b - mean), 0) / n;
+  return { max, min, mean, std: Math.sqrt(variance), n };
+}
+
+function renderMppView() {
+  const filteredValues = mppValuesFiltered();
+  const cat = mppCategoryCounts(filteredValues);
+
+  document.getElementById("mpp-kpi-high").textContent = numFmt(cat.high);
+  document.getElementById("mpp-kpi-mid").textContent = numFmt(cat.mid);
+  document.getElementById("mpp-kpi-low").textContent = numFmt(cat.low);
+  document.getElementById("mpp-kpi-total").textContent = numFmt(cat.total);
+
+  const siteLabel = currentSite === "all" ? "Semua Site" : "Hub " + (HUBS.find((h) => h.key === currentSite)?.label || "");
+  const monthLabel = document.getElementById("month-select").selectedOptions[0]?.textContent || "Semua Bulan";
+  document.getElementById("mpp-monthly-sub").textContent = `${HUBS.length} site &middot; ${monthLabel}`.replace("&middot;", "\u00B7");
+  document.getElementById("mpp-filter-aktif").textContent = `Filter aktif: ${siteLabel} \u00B7 ${monthLabel}`;
+
+  renderMppMonthlyChart();
+  renderMppHistogram(filteredValues);
+  renderMppDriverStats(filteredValues, siteLabel, monthLabel);
+}
+
+function renderMppMonthlyChart() {
+  const rows = mppRowsAllMonths();
+  const byMonth = {}; // "YYYY-MM" -> {high,mid,low}
+  rows.forEach((r) => {
+    const d = parseTanggal(r["Tanggal"]);
+    if (!d) return;
+    const mk = monthKey(d);
+    if (!byMonth[mk]) byMonth[mk] = { high: 0, mid: 0, low: 0 };
+    const c = mppCategory(toNumber(r[MPP_FIELD]));
+    byMonth[mk][c]++;
+  });
+
+  const sortedKeys = Object.keys(byMonth).sort();
+  const labels = sortedKeys.map((mk) => MONTH_NAMES_ID[parseInt(mk.split("-")[1], 10) - 1]);
+  const highData = sortedKeys.map((mk) => byMonth[mk].high);
+  const midData = sortedKeys.map((mk) => byMonth[mk].mid);
+  const lowData = sortedKeys.map((mk) => byMonth[mk].low);
+
+  const ctx = document.getElementById("mpp-monthly-chart");
+  if (mppMonthlyChart) mppMonthlyChart.destroy();
+  mppMonthlyChart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        { label: "High >1.5Jt", data: highData, backgroundColor: "#ef4444", stack: "s" },
+        { label: "Mid 500Rb-1.5Jt", data: midData, backgroundColor: "#f59e0b", stack: "s" },
+        { label: "Low <500Rb", data: lowData, backgroundColor: "#22c55e", stack: "s" },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } },
+      plugins: { legend: { position: "top", labels: { boxWidth: 10, font: { size: 11 } } } },
+    },
+  });
+}
+
+function renderMppHistogram(values) {
+  const bins = [
+    { label: "<500K", test: (v) => v < 500000 },
+    { label: "500K-1M", test: (v) => v >= 500000 && v < 1000000 },
+    { label: "1M-1.5M", test: (v) => v >= 1000000 && v < 1500000 },
+    { label: "1.5M-2M", test: (v) => v >= 1500000 && v < 2000000 },
+    { label: ">2M", test: (v) => v >= 2000000 },
+  ];
+  const counts = bins.map((b) => values.filter(b.test).length);
+
+  const { mean, std } = mppStats(values);
+  const binMidpoints = [250000, 750000, 1250000, 1750000, 2250000];
+  let curve = binMidpoints.map((x) =>
+    std > 0 ? Math.exp(-0.5 * Math.pow((x - mean) / std, 2)) / (std * Math.sqrt(2 * Math.PI)) : 0
+  );
+  const maxCount = Math.max(...counts, 1);
+  const maxCurve = Math.max(...curve, 1e-12);
+  curve = curve.map((v) => (v / maxCurve) * maxCount); // skala visual ke tinggi bar
+
+  const ctx = document.getElementById("mpp-histogram-chart");
+  if (mppHistogramChart) mppHistogramChart.destroy();
+  mppHistogramChart = new Chart(ctx, {
+    data: {
+      labels: bins.map((b) => b.label),
+      datasets: [
+        {
+          type: "bar",
+          label: "Jumlah Driver",
+          data: counts,
+          backgroundColor: "#fbbf6f",
+          order: 2,
+        },
+        {
+          type: "line",
+          label: "Kurva Normal",
+          data: curve,
+          borderColor: "#1e3a8a",
+          backgroundColor: "#1e3a8a",
+          borderWidth: 2,
+          pointRadius: 3,
+          tension: 0.4,
+          fill: false,
+          order: 1,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: { y: { beginAtZero: true } },
+      plugins: { legend: { position: "top", labels: { boxWidth: 10, font: { size: 11 } } } },
+    },
+  });
+}
+
+function renderMppDriverStats(values, siteLabel, monthLabel) {
+  const s = mppStats(values);
+  const subText = `${numFmt(s.n)} entri \u00B7 filter aktif`;
+  document.getElementById("mpp-stat-max").textContent = rupiahFull(s.max);
+  document.getElementById("mpp-stat-min").textContent = rupiahFull(s.min);
+  document.getElementById("mpp-stat-mean").textContent = rupiahFull(s.mean);
+  document.getElementById("mpp-stat-std").textContent = rupiahFull(s.std);
+  ["max", "min", "mean", "std"].forEach((k) => {
+    document.getElementById(`mpp-stat-${k}-sub`).textContent = subText;
+  });
+}
+
+function rupiahFull(n) {
+  return "Rp " + new Intl.NumberFormat("id-ID").format(Math.round(n || 0));
+}
 
 // ---------------- INIT ----------------
 
