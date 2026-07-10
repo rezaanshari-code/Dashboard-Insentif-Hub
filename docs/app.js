@@ -96,6 +96,7 @@ async function loadAllData() {
   }
 
   populateMonthOptions();
+  populateYtdYearOptions();
   renderAll();
 }
 
@@ -358,6 +359,12 @@ function wireControls() {
   document.getElementById("month-select").addEventListener("change", (e) => {
     currentMonth = e.target.value;
     renderAll();
+  });
+
+  document.getElementById("ytd-year-select").addEventListener("change", (e) => {
+    currentYtdYear = e.target.value;
+    currentDriverPage = 1;
+    renderDriverTable();
   });
 
   document.getElementById("btn-full-month").addEventListener("click", () => {
@@ -700,15 +707,21 @@ function rupiahFull(n) {
 // ---------------- DAFTAR DRIVER MPP (tabel + filter kategori) ----------------
 
 let currentDriverCategory = "all";
+let currentYtdYear = "all"; // "all" | "2025" | "2026" | ...
 
 // Total insentif per orang (by NIK) across SEMUA bulan & SEMUA site --
 // dipakai buat kolom "Total YTD" (angka ini tidak berubah walau tabel
 // difilter ke 1 site/bulan tertentu, karena memang menunjukkan total
-// year-to-date orang itu).
+// year-to-date orang itu). Dibatasi ke 1 TAHUN tertentu lewat dropdown
+// "Tahun YTD" (default "Semua Tahun" -- gabung semua tahun yang ada).
 function ytdTotalsByNik() {
   const totals = {};
   HUBS.forEach((hub) => {
     (RAW[hub.key] || []).forEach((r) => {
+      if (currentYtdYear !== "all") {
+        const d = parseTanggal(r["Tanggal"]);
+        if (!d || String(d.getFullYear()) !== currentYtdYear) return;
+      }
       const val = toNumber(r[MPP_FIELD]);
       const dNik = cleanNik(r["NIK1"]);
       if (dNik) totals[dNik] = (totals[dNik] || 0) + val;
@@ -717,6 +730,38 @@ function ytdTotalsByNik() {
     });
   });
   return totals;
+}
+
+// Isi dropdown "Tahun YTD" dari tahun-tahun yang beneran ada di data
+// (dipanggil sekali setelah data.json dimuat).
+function populateYtdYearOptions() {
+  const years = new Set();
+  HUBS.forEach((hub) => {
+    (RAW[hub.key] || []).forEach((r) => {
+      const d = parseTanggal(r["Tanggal"]);
+      if (d) years.add(d.getFullYear());
+    });
+  });
+  const sorted = Array.from(years).sort((a, b) => b - a); // terbaru dulu
+
+  const sel = document.getElementById("ytd-year-select");
+  if (!sel) return;
+  const prevValue = sel.value || "all";
+  sel.innerHTML = '<option value="all">Semua Tahun</option>';
+  sorted.forEach((y) => {
+    const opt = document.createElement("option");
+    opt.value = String(y);
+    opt.textContent = String(y);
+    sel.appendChild(opt);
+  });
+  // Pertahankan pilihan sebelumnya kalau masih valid, default "all" kalau belum pernah dipilih.
+  if (sorted.some((y) => String(y) === prevValue) || prevValue === "all") {
+    sel.value = prevValue;
+    currentYtdYear = prevValue;
+  } else {
+    sel.value = "all";
+    currentYtdYear = "all";
+  }
 }
 
 // Format TAT sumber ("H:MM" atau "H:MM:SS") jadi menit desimal.
