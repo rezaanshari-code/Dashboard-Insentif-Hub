@@ -536,13 +536,38 @@ function renderMppView() {
 
   const siteLabel = currentSite === "all" ? "Semua Site" : "Hub " + (HUBS.find((h) => h.key === currentSite)?.label || "");
   const monthLabel = document.getElementById("month-select").selectedOptions[0]?.textContent || "Semua Bulan";
-  document.getElementById("mpp-monthly-sub").textContent = `${HUBS.length} site &middot; ${monthLabel}`.replace("&middot;", "\u00B7");
   document.getElementById("mpp-filter-aktif").textContent = `Filter aktif: ${siteLabel} \u00B7 ${monthLabel}`;
 
   renderMppMonthlyChart();
   renderMppHistogram(filteredValues);
   renderMppDriverStats(filteredValues, siteLabel, monthLabel);
 }
+
+// Plugin custom Chart.js: gambar angka total (jumlah semua kategori)
+// di atas tiap bar bertumpuk, kayak referensi desainnya.
+const totalLabelPlugin = {
+  id: "totalLabel",
+  afterDatasetsDraw(chart) {
+    const { ctx } = chart;
+    const meta0 = chart.getDatasetMeta(0);
+    if (!meta0 || !meta0.data) return;
+    ctx.save();
+    ctx.font = "700 12px Inter, sans-serif";
+    ctx.fillStyle = "#16213e";
+    ctx.textAlign = "center";
+    meta0.data.forEach((bar, i) => {
+      let total = 0;
+      chart.data.datasets.forEach((ds) => { total += ds.data[i] || 0; });
+      if (!total) return;
+      const topY = Math.min(...chart.data.datasets.map((_, dsIdx) => {
+        const m = chart.getDatasetMeta(dsIdx).data[i];
+        return m ? m.y : Infinity;
+      }));
+      ctx.fillText(numFmt(total), bar.x, topY - 8);
+    });
+    ctx.restore();
+  },
+};
 
 function renderMppMonthlyChart() {
   const rows = mppRowsAllMonths();
@@ -555,30 +580,41 @@ function renderMppMonthlyChart() {
   });
 
   const sortedKeys = Object.keys(byMonth).sort();
-  const labels = sortedKeys.map((mk) => MONTH_NAMES_ID[parseInt(mk.split("-")[1], 10) - 1]);
+  const monthLabels = sortedKeys.map((mk) => MONTH_NAMES_ID[parseInt(mk.split("-")[1], 10) - 1]);
   const highData = sortedKeys.map((mk) => byMonth[mk].high);
   const midData = sortedKeys.map((mk) => byMonth[mk].mid);
   const lowData = sortedKeys.map((mk) => byMonth[mk].low);
 
-  const ctx = document.getElementById("mpp-monthly-chart");
-  if (mppMonthlyChart) mppMonthlyChart.destroy();
-  mppMonthlyChart = new Chart(ctx, {
-    type: "bar",
-    data: {
-      labels,
-      datasets: [
-        { label: "High >1.5Jt", data: highData, backgroundColor: "#ef4444", stack: "s" },
-        { label: "Mid 500Rb-1.5Jt", data: midData, backgroundColor: "#f59e0b", stack: "s" },
-        { label: "Low <500Rb", data: lowData, backgroundColor: "#22c55e", stack: "s" },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } },
-      plugins: { legend: { position: "top", labels: { boxWidth: 10, font: { size: 11 } } } },
-    },
-  });
+  document.getElementById("mpp-monthly-sub").textContent =
+    `${HUBS.length} site \u00B7 ${monthLabels.length ? monthLabels.join(", ") : "belum ada data"}`;
+
+  const wrap = document.querySelector("#mpp-monthly-chart").closest(".chart-canvas-wrap");
+  try {
+    const ctx = document.getElementById("mpp-monthly-chart");
+    if (mppMonthlyChart) mppMonthlyChart.destroy();
+    mppMonthlyChart = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: monthLabels,
+        datasets: [
+          { label: "High >1.5Jt", data: highData, backgroundColor: "#ef4444", stack: "s" },
+          { label: "Mid 500Rb-1.5Jt", data: midData, backgroundColor: "#f59e0b", stack: "s" },
+          { label: "Low <500Rb", data: lowData, backgroundColor: "#22c55e", stack: "s" },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        layout: { padding: { top: 22 } },
+        scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } },
+        plugins: { legend: { position: "top", labels: { boxWidth: 10, font: { size: 11 } } } },
+      },
+      plugins: [totalLabelPlugin],
+    });
+  } catch (err) {
+    console.error("Gagal render grafik bulanan:", err);
+    if (wrap) wrap.innerHTML = `<div style="padding:20px;color:#dc2626;font-size:13px;">Gagal render grafik: ${err.message}</div>`;
+  }
 }
 
 function renderMppHistogram(values) {
@@ -600,40 +636,46 @@ function renderMppHistogram(values) {
   const maxCurve = Math.max(...curve, 1e-12);
   curve = curve.map((v) => (v / maxCurve) * maxCount); // skala visual ke tinggi bar
 
-  const ctx = document.getElementById("mpp-histogram-chart");
-  if (mppHistogramChart) mppHistogramChart.destroy();
-  mppHistogramChart = new Chart(ctx, {
-    data: {
-      labels: bins.map((b) => b.label),
-      datasets: [
-        {
-          type: "bar",
-          label: "Jumlah Driver",
-          data: counts,
-          backgroundColor: "#fbbf6f",
-          order: 2,
-        },
-        {
-          type: "line",
-          label: "Kurva Normal",
-          data: curve,
-          borderColor: "#1e3a8a",
-          backgroundColor: "#1e3a8a",
-          borderWidth: 2,
-          pointRadius: 3,
-          tension: 0.4,
-          fill: false,
-          order: 1,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: { y: { beginAtZero: true } },
-      plugins: { legend: { position: "top", labels: { boxWidth: 10, font: { size: 11 } } } },
-    },
-  });
+  const wrap = document.querySelector("#mpp-histogram-chart").closest(".chart-canvas-wrap");
+  try {
+    const ctx = document.getElementById("mpp-histogram-chart");
+    if (mppHistogramChart) mppHistogramChart.destroy();
+    mppHistogramChart = new Chart(ctx, {
+      data: {
+        labels: bins.map((b) => b.label),
+        datasets: [
+          {
+            type: "bar",
+            label: "Jumlah Driver",
+            data: counts,
+            backgroundColor: "#fbbf6f",
+            order: 2,
+          },
+          {
+            type: "line",
+            label: "Kurva Normal",
+            data: curve,
+            borderColor: "#1e3a8a",
+            backgroundColor: "#1e3a8a",
+            borderWidth: 2,
+            pointRadius: 3,
+            tension: 0.4,
+            fill: false,
+            order: 1,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { y: { beginAtZero: true } },
+        plugins: { legend: { position: "top", labels: { boxWidth: 10, font: { size: 11 } } } },
+      },
+    });
+  } catch (err) {
+    console.error("Gagal render histogram:", err);
+    if (wrap) wrap.innerHTML = `<div style="padding:20px;color:#dc2626;font-size:13px;">Gagal render grafik: ${err.message}</div>`;
+  }
 }
 
 function renderMppDriverStats(values, siteLabel, monthLabel) {
