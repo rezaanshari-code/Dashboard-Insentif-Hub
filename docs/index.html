@@ -7,9 +7,9 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=202607100454417796650000">
+<link rel="stylesheet" href="style.css?v=202607100717033318360000">
 <!-- index.html ini di-generate otomatis dari template.html oleh scripts/fetch_sheets.py. JANGAN edit index.html langsung — perubahan akan ketimpa run berikutnya. Edit template.html. -->
-<!-- build: 2026-07-10T04:54:41.779665+00:00 -->
+<!-- build: 2026-07-10T07:17:03.331836+00:00 -->
 </head>
 <body>
 
@@ -186,6 +186,37 @@
             <div class="driver-stat-sub" id="mpp-stat-std-sub">-- entri &middot; filter aktif</div>
           </div>
         </div>
+
+        <div class="driver-tab-row" id="driver-tab-row">
+          <button class="driver-tab active" data-cat="all">Semua</button>
+          <button class="driver-tab" data-cat="high">High &gt;1.5M</button>
+          <button class="driver-tab" data-cat="mid">Mid 500K&ndash;1.5M</button>
+          <button class="driver-tab" data-cat="low">Low &lt;500K</button>
+        </div>
+
+        <div class="driver-table-wrap">
+          <table class="driver-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Nama</th>
+                <th>Role</th>
+                <th>Site</th>
+                <th>Bulan</th>
+                <th>Kategori</th>
+                <th>Insentif MPP</th>
+                <th>Total YTD</th>
+                <th>TAT Avg</th>
+                <th>TAT Akumulasi</th>
+                <th>DP Insentif</th>
+              </tr>
+            </thead>
+            <tbody id="driver-table-body">
+              <tr><td colspan="11" class="driver-table-empty">Memuat&hellip;</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="driver-table-note" id="driver-table-note"></div>
       </section>
     </section>
 
@@ -213,6 +244,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="app.js?v=202607100454417796650000"></script>
+<script src="app.js?v=202607100717033318360000"></script>
 </body>
 </html>
