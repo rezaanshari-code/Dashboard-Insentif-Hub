@@ -25,9 +25,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Fetch data, auto-discover & geocode hub baru, render dashboard
+      - name: Fetch data (multi-spreadsheet), auto-discover & geocode hub baru, render dashboard
         env:
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+          SPREADSHEET_ID_2025: ${{ secrets.SPREADSHEET_ID_2025 }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         run: |
           python3 - << 'PYEOF'
@@ -35,23 +36,32 @@ jobs:
           import urllib.request, urllib.parse, urllib.error
           from datetime import datetime, timezone
 
-          SPREADSHEET_ID = os.environ["SPREADSHEET_ID"]
           API_KEY = os.environ["GOOGLE_API_KEY"]
           COORDS_PATH = "docs/hub_coords.json"
 
-          # Palet warna cadangan untuk hub baru yang ke-auto-detect
-          # (dipakai bergilir kalau hub baru ditemukan)
+          # Semua spreadsheet yang mau digabung jadi 1 dashboard. Tambah baris
+          # baru di sini kalau suatu saat ada spreadsheet tahun lain lagi --
+          # nggak perlu ubah logic di bawah sama sekali.
+          SPREADSHEET_IDS = [
+              sid for sid in [
+                  os.environ.get("SPREADSHEET_ID"),
+                  os.environ.get("SPREADSHEET_ID_2025"),
+              ] if sid
+          ]
+
           FALLBACK_COLORS = [
               "#0ea5e9", "#84cc16", "#f43f5e", "#8b5cf6",
               "#06b6d4", "#eab308", "#ec4899", "#22c55e",
           ]
 
-          # ---------------- 1. AUTO-DISCOVER SEMUA TAB HUB ----------------
-          # Nggak perlu hardcode daftar hub lagi -- tab apapun yang namanya
-          # diawali "Hub " otomatis ikut ditarik.
-          def list_hub_sheets():
+          # ---------------- AUTO-DISCOVER TAB "HUB ..." (case-insensitive) ----------------
+          # Nama tab boleh beda gaya penulisan antar spreadsheet (mis. "Hub Bogor"
+          # vs "HUB BOGOR") -- semua dinormalisasi ke label Title Case + key
+          # lowercase yang SAMA, supaya baris dari kedua spreadsheet otomatis
+          # digabung ke hub yang sama, bukan dianggap hub baru yang beda.
+          def list_hub_sheets(spreadsheet_id):
               url = (
-                  f"https://sheets.googleapis.com/v4/spreadsheets/{SPREADSHEET_ID}"
+                  f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}"
                   f"?fields=sheets.properties&key={API_KEY}"
               )
               with urllib.request.urlopen(url, timeout=30) as resp:
@@ -59,16 +69,17 @@ jobs:
               hubs = []
               for s in meta.get("sheets", []):
                   title = s["properties"]["title"]
-                  if title.startswith("Hub "):
-                      label = title[len("Hub "):].strip()
+                  if title.strip().lower().startswith("hub "):
+                      raw_label = title.strip()[4:].strip()
+                      label = raw_label.title()  # "BOGOR" / "bogor" -> "Bogor"
                       key = re.sub(r"\s+", "_", label.lower())
-                      hubs.append({"key": key, "sheet": title, "label": label})
+                      hubs.append({"key": key, "label": label, "sheet": title, "spreadsheet_id": spreadsheet_id})
               return hubs
 
-          def fetch_sheet_rows(sheet_name):
+          def fetch_sheet_rows(spreadsheet_id, sheet_name):
               encoded = urllib.parse.quote(sheet_name)
               url = (
-                  f"https://sheets.googleapis.com/v4/spreadsheets/{SPREADSHEET_ID}"
+                  f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}"
                   f"/values/{encoded}?key={API_KEY}"
               )
               req = urllib.request.Request(url)
@@ -84,7 +95,7 @@ jobs:
                   rows.append(dict(zip(headers, padded)))
               return rows
 
-          # ---------------- 2. AUTO-GEOCODE HUB BARU ----------------
+          # ---------------- AUTO-GEOCODE HUB BARU ----------------
           def geocode_label(label):
               query = f"{label}, Indonesia"
               try:
@@ -113,55 +124,73 @@ jobs:
                   json.dump({"hubs": hubs}, f, ensure_ascii=False, indent=2)
 
           # ---------------- MAIN ----------------
-          discovered = list_hub_sheets()
-          print(f"Ditemukan {len(discovered)} tab hub: {[h['sheet'] for h in discovered]}")
+          if not SPREADSHEET_IDS:
+              print("Tidak ada SPREADSHEET_ID yang diset di secrets.", file=sys.stderr)
+              sys.exit(1)
+
+          # Kumpulkan semua tab hub dari SEMUA spreadsheet, lalu gabung
+          # berdasarkan "key" yang sama (dedup + rows digabung, bukan ditimpa).
+          all_sheet_refs = []
+          for sid in SPREADSHEET_IDS:
+              try:
+                  found = list_hub_sheets(sid)
+                  print(f"Spreadsheet {sid}: {len(found)} tab hub -> {[h['sheet'] for h in found]}")
+                  all_sheet_refs.extend(found)
+              except Exception as e:
+                  print(f"[GAGAL] Tidak bisa baca daftar tab dari spreadsheet {sid}: {e}", file=sys.stderr)
+
+          # key -> label (dipakai kalau perlu bikin entri hub_coords baru)
+          key_to_label = {}
+          for h in all_sheet_refs:
+              key_to_label.setdefault(h["key"], h["label"])
 
           hub_coords = load_hub_coords()
           existing_keys = {h["key"] for h in hub_coords}
           color_i = 0
-
-          new_hubs = [h for h in discovered if h["key"] not in existing_keys]
-          if new_hubs:
-              print(f"\nHub baru terdeteksi: {[h['label'] for h in new_hubs]}")
-              for h in new_hubs:
-                  coords = geocode_label(h["label"])
+          new_keys = sorted(set(key_to_label) - existing_keys)
+          if new_keys:
+              print(f"\nHub baru terdeteksi: {[key_to_label[k] for k in new_keys]}")
+              for k in new_keys:
+                  label = key_to_label[k]
+                  coords = geocode_label(label)
                   time.sleep(1.1)  # rate limit Nominatim: max 1 req/detik
                   color = FALLBACK_COLORS[color_i % len(FALLBACK_COLORS)]
                   color_i += 1
                   entry = {
-                      "key": h["key"],
-                      "label": h["label"],
+                      "key": k,
+                      "label": label,
                       "color": color,
                       "lat": round(coords[0], 4) if coords else -6.2,
                       "lng": round(coords[1], 4) if coords else 106.8,
                       "labelDir": "right",
                   }
                   if not coords:
-                      print(f"  [WARNING] Geocode gagal untuk '{h['label']}', pakai koordinat default Jakarta -- edit manual docs/hub_coords.json kalau perlu.", file=sys.stderr)
+                      print(f"  [WARNING] Geocode gagal untuk '{label}', pakai koordinat default Jakarta.", file=sys.stderr)
                   hub_coords.append(entry)
-                  print(f"  + {h['label']} -> lat={entry['lat']}, lng={entry['lng']}, color={entry['color']}")
+                  print(f"  + {label} -> lat={entry['lat']}, lng={entry['lng']}, color={entry['color']}")
               save_hub_coords(hub_coords)
           else:
               print("Tidak ada hub baru.")
 
-          # ---------------- FETCH DATA TIAP HUB ----------------
+          # ---------------- FETCH & GABUNG DATA TIAP HUB ----------------
           result = {"generated_at": datetime.now(timezone.utc).isoformat(), "hubs": {}}
           had_error = False
-          for hub in discovered:
+          for ref in all_sheet_refs:
               try:
-                  rows = fetch_sheet_rows(hub["sheet"])
-                  result["hubs"][hub["key"]] = rows
-                  print(f"[OK] {hub['sheet']}: {len(rows)} baris")
+                  rows = fetch_sheet_rows(ref["spreadsheet_id"], ref["sheet"])
+                  result["hubs"].setdefault(ref["key"], [])
+                  result["hubs"][ref["key"]].extend(rows)
+                  print(f"[OK] {ref['sheet']} ({ref['spreadsheet_id'][:8]}...): {len(rows)} baris -> key={ref['key']}")
               except (urllib.error.HTTPError, urllib.error.URLError) as e:
                   had_error = True
-                  print(f"[GAGAL] {hub['sheet']}: {e}", file=sys.stderr)
-                  result["hubs"][hub["key"]] = []
+                  print(f"[GAGAL] {ref['sheet']}: {e}", file=sys.stderr)
+                  result["hubs"].setdefault(ref["key"], [])
 
           with open("docs/data.json", "w", encoding="utf-8") as f:
               json.dump(result, f, ensure_ascii=False, indent=2)
 
           total = sum(len(v) for v in result["hubs"].values())
-          print(f"\ndocs/data.json: total {total} baris ditulis")
+          print(f"\ndocs/data.json: total {total} baris ditulis ({len(result['hubs'])} hub)")
 
           # ---------------- RENDER TEMPLATE -> INDEX.HTML ----------------
           with open("docs/template.html", "r", encoding="utf-8") as f:
