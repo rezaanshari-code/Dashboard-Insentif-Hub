@@ -7,9 +7,9 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=202607100823549351420000">
+<link rel="stylesheet" href="style.css?v=202607100844469828460000">
 <!-- index.html ini di-generate otomatis dari template.html oleh scripts/fetch_sheets.py. JANGAN edit index.html langsung — perubahan akan ketimpa run berikutnya. Edit template.html. -->
-<!-- build: 2026-07-10T08:23:54.935142+00:00 -->
+<!-- build: 2026-07-10T08:44:46.982846+00:00 -->
 </head>
 <body>
 
@@ -193,6 +193,8 @@
           </div>
         </div>
 
+        <div class="recurring-high-box" id="mpp-recurring-high" style="display:none"></div>
+
         <div class="driver-tab-row" id="driver-tab-row">
           <button class="driver-tab active" data-cat="all">Semua</button>
           <button class="driver-tab" data-cat="high">High &gt;1.5M</button>
@@ -222,7 +224,10 @@
             </tbody>
           </table>
         </div>
-        <div class="driver-table-note" id="driver-table-note"></div>
+        <div class="driver-pagination" id="driver-pagination">
+          <div class="driver-pagination-info" id="driver-pagination-info"></div>
+          <div class="driver-pagination-pages" id="driver-pagination-pages"></div>
+        </div>
       </section>
     </section>
 
@@ -250,6 +255,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="app.js?v=202607100823549351420000"></script>
+<script src="app.js?v=202607100844469828460000"></script>
 </body>
 </html>
