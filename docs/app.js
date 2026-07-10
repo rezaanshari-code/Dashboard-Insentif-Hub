@@ -433,17 +433,58 @@ let mppHistogramChart = null;
 const MPP_FIELD = "Insentif per MPP";
 const MONTH_NAMES_ID = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
 
-// Semua baris MPP untuk site aktif, HANYA menghormati filter bulan yang
-// sedang dipilih di topbar (dipakai untuk KPI card & histogram & daftar driver).
+// Bersihkan nilai NIK: string kosong / "nan" / "0" dianggap "tidak ada
+// orang" (mis. trip tanpa kenek), jadi tidak ikut dihitung sebagai 1 MPP.
+function cleanNik(v) {
+  if (v === null || v === undefined) return "";
+  const s = String(v).trim();
+  if (!s || s.toLowerCase() === "nan" || s === "0") return "";
+  return s;
+}
+
+// Inti logic MPP: 1 "MPP" = 1 ORANG (by NIK) DI 1 BULAN TERTENTU, nilainya
+// SUM seluruh "Insentif per MPP" dari semua baris trip orang itu di bulan
+// itu -- bukan dihitung per baris/per trip. Satu baris trip berkontribusi
+// ke 2 entitas MPP sekaligus (driver via NIK1, kenek via nik2), kecuali
+// kolom NIK-nya kosong (mis. trip tanpa kenek).
+function personMonthTotals(rows) {
+  const totals = {}; // "NIK|YYYY-MM" -> akumulasi total
+
+  rows.forEach((r) => {
+    const d = parseTanggal(r["Tanggal"]);
+    if (!d) return;
+    const mk = monthKey(d);
+    const val = toNumber(r[MPP_FIELD]);
+
+    const driverNik = cleanNik(r["NIK1"]);
+    if (driverNik) {
+      const key = driverNik + "|" + mk;
+      totals[key] = (totals[key] || 0) + val;
+    }
+
+    const kenekNik = cleanNik(r["nik2"]);
+    if (kenekNik) {
+      const key = kenekNik + "|" + mk;
+      totals[key] = (totals[key] || 0) + val;
+    }
+  });
+
+  return Object.entries(totals).map(([key, total]) => {
+    const sep = key.lastIndexOf("|");
+    return { nik: key.slice(0, sep), month: key.slice(sep + 1), total };
+  });
+}
+
+// Nilai MPP (sudah di-SUM per orang per bulan) untuk site aktif, menghormati
+// filter bulan yang sedang dipilih di topbar (dipakai KPI card, histogram,
+// & daftar driver). Kalau filter = "Semua Bulan", semua pasangan
+// (orang, bulan) dari seluruh bulan ikut digabung (bukan di-total-kan lagi
+// lintas bulan -- tiap bulan tetap entri terpisah, sesuai definisi "per bulan").
 function mppValuesFiltered() {
   const keys = activeHubKeys();
-  const values = [];
-  keys.forEach((k) => {
-    getFilteredRows(k).forEach((r) => {
-      values.push(toNumber(r[MPP_FIELD]));
-    });
-  });
-  return values;
+  let rows = [];
+  keys.forEach((k) => { rows = rows.concat(getFilteredRows(k)); });
+  return personMonthTotals(rows).map((e) => e.total);
 }
 
 // Semua baris MPP untuk site aktif, TANPA filter bulan (dipakai untuk
@@ -505,14 +546,12 @@ function renderMppView() {
 
 function renderMppMonthlyChart() {
   const rows = mppRowsAllMonths();
+  const entries = personMonthTotals(rows); // [{nik, month, total}]
+
   const byMonth = {}; // "YYYY-MM" -> {high,mid,low}
-  rows.forEach((r) => {
-    const d = parseTanggal(r["Tanggal"]);
-    if (!d) return;
-    const mk = monthKey(d);
-    if (!byMonth[mk]) byMonth[mk] = { high: 0, mid: 0, low: 0 };
-    const c = mppCategory(toNumber(r[MPP_FIELD]));
-    byMonth[mk][c]++;
+  entries.forEach((e) => {
+    if (!byMonth[e.month]) byMonth[e.month] = { high: 0, mid: 0, low: 0 };
+    byMonth[e.month][mppCategory(e.total)]++;
   });
 
   const sortedKeys = Object.keys(byMonth).sort();
