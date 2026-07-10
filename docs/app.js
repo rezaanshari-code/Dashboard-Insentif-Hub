@@ -541,6 +541,7 @@ function renderMppView() {
   renderMppMonthlyChart();
   renderMppHistogram(filteredValues);
   renderMppDriverStats(filteredValues, siteLabel, monthLabel);
+  renderDriverTable();
 }
 
 // Plugin custom Chart.js: gambar angka total (jumlah semua kategori)
@@ -694,6 +695,173 @@ function rupiahFull(n) {
   return "Rp " + new Intl.NumberFormat("id-ID").format(Math.round(n || 0));
 }
 
+// ---------------- DAFTAR DRIVER MPP (tabel + filter kategori) ----------------
+
+let currentDriverCategory = "all";
+const DRIVER_TABLE_LIMIT = 200;
+
+// Total insentif per orang (by NIK) across SEMUA bulan & SEMUA site --
+// dipakai buat kolom "Total YTD" (angka ini tidak berubah walau tabel
+// difilter ke 1 site/bulan tertentu, karena memang menunjukkan total
+// year-to-date orang itu).
+function ytdTotalsByNik() {
+  const totals = {};
+  HUBS.forEach((hub) => {
+    (RAW[hub.key] || []).forEach((r) => {
+      const val = toNumber(r[MPP_FIELD]);
+      const dNik = cleanNik(r["NIK1"]);
+      if (dNik) totals[dNik] = (totals[dNik] || 0) + val;
+      const kNik = cleanNik(r["nik2"]);
+      if (kNik) totals[kNik] = (totals[kNik] || 0) + val;
+    });
+  });
+  return totals;
+}
+
+// Format TAT sumber ("H:MM" atau "H:MM:SS") jadi menit desimal.
+function parseTatMinutes(v) {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  const parts = s.split(":").map((p) => parseInt(p, 10));
+  if (parts.some((p) => isNaN(p))) return null;
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 60 + parts[1] + parts[2] / 60;
+  return null;
+}
+
+function formatMinutes(min) {
+  if (min === null || min === undefined || isNaN(min)) return "-";
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  return `${h}j ${m}m`;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// Bangun daftar baris tabel: 1 baris = 1 orang (NIK) di 1 bulan di 1 site,
+// menghormati filter site+bulan yang aktif di topbar.
+function buildDriverTableRows() {
+  const keys = activeHubKeys();
+  const groups = {}; // "nik|bulan|hubKey|role" -> akumulasi
+
+  keys.forEach((hubKey) => {
+    getFilteredRows(hubKey).forEach((r) => {
+      const d = parseTanggal(r["Tanggal"]);
+      if (!d) return;
+      const mk = monthKey(d);
+      const val = toNumber(r[MPP_FIELD]);
+      const tatMin = parseTatMinutes(r["TAT"]);
+      const dp = toNumber(r["DP_Insentif"]);
+
+      const dNik = cleanNik(r["NIK1"]);
+      if (dNik) {
+        const gk = `${dNik}|${mk}|${hubKey}|driver`;
+        if (!groups[gk]) {
+          groups[gk] = { nik: dNik, name: (r["driver"] || "").toString().trim() || "-", role: "driver", hubKey, month: mk, insentif: 0, tatSum: 0, tatCount: 0, dp: 0 };
+        }
+        groups[gk].insentif += val;
+        groups[gk].dp += dp;
+        if (tatMin !== null) { groups[gk].tatSum += tatMin; groups[gk].tatCount++; }
+      }
+
+      const kNik = cleanNik(r["nik2"]);
+      if (kNik) {
+        const gk = `${kNik}|${mk}|${hubKey}|kenek`;
+        if (!groups[gk]) {
+          groups[gk] = { nik: kNik, name: (r["kenek1"] || "").toString().trim() || "-", role: "kenek", hubKey, month: mk, insentif: 0, tatSum: 0, tatCount: 0, dp: 0 };
+        }
+        groups[gk].insentif += val;
+        groups[gk].dp += dp;
+        if (tatMin !== null) { groups[gk].tatSum += tatMin; groups[gk].tatCount++; }
+      }
+    });
+  });
+
+  const ytd = ytdTotalsByNik();
+
+  return Object.values(groups).map((g) => {
+    const hub = HUBS.find((h) => h.key === g.hubKey);
+    const m = parseInt(g.month.split("-")[1], 10);
+    return {
+      nik: g.nik,
+      name: g.name,
+      role: g.role,
+      siteLabel: hub ? hub.label : g.hubKey,
+      monthLabel: MONTH_NAMES_ID[m - 1],
+      category: mppCategory(g.insentif),
+      insentif: g.insentif,
+      ytd: ytd[g.nik] || 0,
+      tatAvg: g.tatCount ? g.tatSum / g.tatCount : null,
+      tatTotal: g.tatSum,
+      dp: g.dp,
+    };
+  });
+}
+
+function renderDriverTable() {
+  let rows;
+  try {
+    rows = buildDriverTableRows();
+  } catch (err) {
+    console.error("Gagal membangun tabel driver:", err);
+    document.getElementById("driver-table-body").innerHTML =
+      `<tr><td colspan="11" class="driver-table-empty" style="color:#dc2626">Gagal memuat tabel: ${err.message}</td></tr>`;
+    return;
+  }
+
+  const filtered = currentDriverCategory === "all" ? rows : rows.filter((r) => r.category === currentDriverCategory);
+  filtered.sort((a, b) => b.insentif - a.insentif);
+
+  const tbody = document.getElementById("driver-table-body");
+  const note = document.getElementById("driver-table-note");
+
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="11" class="driver-table-empty">Tidak ada data untuk filter ini.</td></tr>`;
+    note.textContent = "";
+    return;
+  }
+
+  const shown = filtered.slice(0, DRIVER_TABLE_LIMIT);
+  const catLabel = { high: "High", mid: "Mid", low: "Low" };
+  const catClass = { high: "driver-pill-cat-high", mid: "driver-pill-cat-mid", low: "driver-pill-cat-low" };
+
+  tbody.innerHTML = shown.map((r, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td class="driver-name">${escapeHtml(r.name)}</td>
+      <td><span class="driver-pill driver-pill-role-${r.role}">${r.role === "driver" ? "Driver" : "Kenek"}</span></td>
+      <td><span class="driver-pill driver-pill-site">Hub ${escapeHtml(r.siteLabel)}</span></td>
+      <td>${r.monthLabel}</td>
+      <td><span class="driver-pill ${catClass[r.category]}">${catLabel[r.category]}</span></td>
+      <td>${rupiahFull(r.insentif)}</td>
+      <td>${rupiahFull(r.ytd)}</td>
+      <td>${formatMinutes(r.tatAvg)}</td>
+      <td>${formatMinutes(r.tatTotal)}</td>
+      <td>${numFmt(r.dp)} titik</td>
+    </tr>
+  `).join("");
+
+  note.textContent = filtered.length > DRIVER_TABLE_LIMIT
+    ? `Menampilkan ${numFmt(DRIVER_TABLE_LIMIT)} dari ${numFmt(filtered.length)} entri (diurutkan dari insentif tertinggi).`
+    : `Menampilkan semua ${numFmt(filtered.length)} entri.`;
+}
+
+function wireDriverTabs() {
+  document.querySelectorAll(".driver-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".driver-tab").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      currentDriverCategory = btn.dataset.cat;
+      renderDriverTable();
+    });
+  });
+}
+
 // ---------------- INIT ----------------
 
 function initMap() {
@@ -722,5 +890,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   initMap();
   buildHubNav();
   wireControls();
+  wireDriverTabs();
   loadAllData();
 });
