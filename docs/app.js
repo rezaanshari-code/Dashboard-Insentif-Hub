@@ -14,7 +14,8 @@ let RAW = {};         // { hubKey: [rows...] }, dimuat dari data.json
 let map;              // leaflet instance
 let markers = {};     // hubKey -> leaflet marker
 let currentSite = "all";
-let currentMonth = "all"; // "all" | "YYYY-MM"
+let currentYear = null;   // "2025" | "2026" | ... -- diisi setelah data dimuat
+let currentMonth = "all"; // "all" (= seluruh currentYear) | "YYYY-MM" | "custom:from:to"
 
 const rupiah = (n) => "Rp " + formatCompact(n);
 const numFmt = (n) => new Intl.NumberFormat("id-ID").format(Math.round(n || 0));
@@ -95,6 +96,7 @@ async function loadAllData() {
     );
   }
 
+  populateYearOptions();
   populateMonthOptions();
   populateYtdYearOptions();
   renderAll();
@@ -110,7 +112,23 @@ function setStatus(msg, isError) {
 
 function getFilteredRows(hubKey) {
   const rows = RAW[hubKey] || [];
-  if (currentMonth === "all") return rows;
+  if (String(currentMonth).startsWith("custom:")) {
+    const [, from, to] = currentMonth.split(":");
+    const fromD = new Date(from), toD = new Date(to);
+    return rows.filter((r) => {
+      const d = parseTanggal(r["Tanggal"]);
+      return d && d >= fromD && d <= toD;
+    });
+  }
+  if (currentMonth === "all") {
+    // "all" = seluruh bulan dalam TAHUN yang lagi dipilih (bukan semua
+    // tahun sekaligus) -- biar Kategori MPP per Bulan dkk tidak nyampur
+    // 2025+2026 jadi satu grafik yang padat.
+    return rows.filter((r) => {
+      const d = parseTanggal(r["Tanggal"]);
+      return d && String(d.getFullYear()) === String(currentYear);
+    });
+  }
   return rows.filter((r) => {
     const d = parseTanggal(r["Tanggal"]);
     if (!d) return false;
@@ -137,17 +155,45 @@ function activeHubKeys() {
 
 // ---------------- RENDERING ----------------
 
+// Isi dropdown "Tahun" (topbar) dari tahun-tahun yang ada di data.
+// Dipanggil sekali setelah data.json dimuat. Default: tahun terbaru.
+function populateYearOptions() {
+  const years = new Set();
+  Object.values(RAW).forEach((rows) => {
+    rows.forEach((r) => {
+      const d = parseTanggal(r["Tanggal"]);
+      if (d) years.add(d.getFullYear());
+    });
+  });
+  const sorted = Array.from(years).sort((a, b) => b - a); // terbaru dulu
+
+  const sel = document.getElementById("year-select");
+  sel.innerHTML = "";
+  sorted.forEach((y) => {
+    const opt = document.createElement("option");
+    opt.value = String(y);
+    opt.textContent = String(y);
+    sel.appendChild(opt);
+  });
+  if (sorted.length) {
+    currentYear = String(sorted[0]);
+    sel.value = currentYear;
+  }
+}
+
+// Isi dropdown "Bulan" HANYA dengan bulan-bulan yang ada di currentYear
+// (dipanggil ulang tiap kali tahun diganti).
 function populateMonthOptions() {
   const monthSet = new Set();
   Object.values(RAW).forEach((rows) => {
     rows.forEach((r) => {
       const d = parseTanggal(r["Tanggal"]);
-      if (d) monthSet.add(monthKey(d));
+      if (d && String(d.getFullYear()) === String(currentYear)) monthSet.add(monthKey(d));
     });
   });
   const months = Array.from(monthSet).sort();
   const sel = document.getElementById("month-select");
-  sel.innerHTML = '<option value="all">Semua Bulan</option>';
+  sel.innerHTML = `<option value="all">Semua Bulan (${currentYear})</option>`;
   const monthNames = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
   months.forEach((mk) => {
     const [y, m] = mk.split("-");
@@ -159,6 +205,9 @@ function populateMonthOptions() {
   if (months.length) {
     currentMonth = months[months.length - 1];
     sel.value = currentMonth;
+  } else {
+    currentMonth = "all";
+    sel.value = "all";
   }
 }
 
@@ -356,6 +405,12 @@ function wireControls() {
 
   document.querySelector('.nav-item[data-site="all"]').addEventListener("click", (e) => selectSite("all", e.currentTarget));
 
+  document.getElementById("year-select").addEventListener("change", (e) => {
+    currentYear = e.target.value;
+    populateMonthOptions();
+    renderAll();
+  });
+
   document.getElementById("month-select").addEventListener("change", (e) => {
     currentMonth = e.target.value;
     renderAll();
@@ -370,6 +425,9 @@ function wireControls() {
   document.getElementById("btn-full-month").addEventListener("click", () => {
     document.getElementById("date-from").value = "";
     document.getElementById("date-to").value = "";
+    currentMonth = "all";
+    document.getElementById("month-select").value = "all";
+    renderAll();
   });
 
   document.getElementById("btn-apply").addEventListener("click", () => {
@@ -395,26 +453,6 @@ function wireControls() {
     if (e.target.id === "modal-backdrop") e.target.classList.remove("show");
   });
 }
-
-// override getFilteredRows to support custom date range
-const _origGetFilteredRows = getFilteredRows;
-getFilteredRows = function (hubKey) {
-  const rows = RAW[hubKey] || [];
-  if (currentMonth === "all") return rows;
-  if (String(currentMonth).startsWith("custom:")) {
-    const [, from, to] = currentMonth.split(":");
-    const fromD = new Date(from), toD = new Date(to);
-    return rows.filter((r) => {
-      const d = parseTanggal(r["Tanggal"]);
-      return d && d >= fromD && d <= toD;
-    });
-  }
-  return rows.filter((r) => {
-    const d = parseTanggal(r["Tanggal"]);
-    if (!d) return false;
-    return monthKey(d) === currentMonth;
-  });
-};
 
 // ---------------- VIEW SWITCHING (sidebar Menu) ----------------
 
@@ -496,11 +534,18 @@ function mppValuesFiltered() {
 
 // Semua baris MPP untuk site aktif, TANPA filter bulan (dipakai untuk
 // grafik "Kategori MPP per Bulan" yang memang menampilkan tren semua bulan).
+// Semua baris untuk site aktif, TANPA filter bulan tapi TETAP dibatasi ke
+// TAHUN yang lagi dipilih di topbar (dipakai grafik "Kategori MPP per
+// Bulan" & banner "Driver High berulang" -- biar nggak nyampur 2025+2026
+// jadi satu grafik yang padat).
 function mppRowsAllMonths() {
   const keys = activeHubKeys();
   const rows = [];
   keys.forEach((k) => {
-    (RAW[k] || []).forEach((r) => rows.push(r));
+    (RAW[k] || []).forEach((r) => {
+      const d = parseTanggal(r["Tanggal"]);
+      if (d && String(d.getFullYear()) === String(currentYear)) rows.push(r);
+    });
   });
   return rows;
 }
@@ -596,7 +641,7 @@ function renderMppMonthlyChart() {
   const lowData = sortedKeys.map((mk) => byMonth[mk].low);
 
   document.getElementById("mpp-monthly-sub").textContent =
-    `${HUBS.length} site \u00B7 ${monthLabels.length ? monthLabels.join(", ") : "belum ada data"}`;
+    `${HUBS.length} site \u00B7 Tahun ${currentYear} \u00B7 ${monthLabels.length ? monthLabels.join(", ") : "belum ada data"}`;
 
   const wrap = document.querySelector("#mpp-monthly-chart").closest(".chart-canvas-wrap");
   try {
