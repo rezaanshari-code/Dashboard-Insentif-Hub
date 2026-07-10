@@ -34,6 +34,11 @@ body {
   display: flex;
   flex-direction: column;
   padding: 22px 16px;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100vh;
+  overflow-y: auto;
 }
 
 .brand {
