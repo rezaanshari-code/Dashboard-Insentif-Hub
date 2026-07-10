@@ -186,6 +186,37 @@
             <div class="driver-stat-sub" id="mpp-stat-std-sub">-- entri &middot; filter aktif</div>
           </div>
         </div>
+
+        <div class="driver-tab-row" id="driver-tab-row">
+          <button class="driver-tab active" data-cat="all">Semua</button>
+          <button class="driver-tab" data-cat="high">High &gt;1.5M</button>
+          <button class="driver-tab" data-cat="mid">Mid 500K&ndash;1.5M</button>
+          <button class="driver-tab" data-cat="low">Low &lt;500K</button>
+        </div>
+
+        <div class="driver-table-wrap">
+          <table class="driver-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Nama</th>
+                <th>Role</th>
+                <th>Site</th>
+                <th>Bulan</th>
+                <th>Kategori</th>
+                <th>Insentif MPP</th>
+                <th>Total YTD</th>
+                <th>TAT Avg</th>
+                <th>TAT Akumulasi</th>
+                <th>DP Insentif</th>
+              </tr>
+            </thead>
+            <tbody id="driver-table-body">
+              <tr><td colspan="11" class="driver-table-empty">Memuat&hellip;</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="driver-table-note" id="driver-table-note"></div>
       </section>
     </section>
 
