@@ -526,6 +526,7 @@ function mppStats(values) {
 }
 
 function renderMppView() {
+  currentDriverPage = 1;
   const filteredValues = mppValuesFiltered();
   const cat = mppCategoryCounts(filteredValues);
 
@@ -541,6 +542,7 @@ function renderMppView() {
   renderMppMonthlyChart();
   renderMppHistogram(filteredValues);
   renderMppDriverStats(filteredValues, siteLabel, monthLabel);
+  renderRecurringHighBanner();
   renderDriverTable();
 }
 
@@ -698,7 +700,6 @@ function rupiahFull(n) {
 // ---------------- DAFTAR DRIVER MPP (tabel + filter kategori) ----------------
 
 let currentDriverCategory = "all";
-const DRIVER_TABLE_LIMIT = 200;
 
 // Total insentif per orang (by NIK) across SEMUA bulan & SEMUA site --
 // dipakai buat kolom "Total YTD" (angka ini tidak berubah walau tabel
@@ -803,6 +804,9 @@ function buildDriverTableRows() {
   });
 }
 
+const DRIVER_PAGE_SIZE = 20;
+let currentDriverPage = 1;
+
 function renderDriverTable() {
   let rows;
   try {
@@ -811,6 +815,8 @@ function renderDriverTable() {
     console.error("Gagal membangun tabel driver:", err);
     document.getElementById("driver-table-body").innerHTML =
       `<tr><td colspan="11" class="driver-table-empty" style="color:#dc2626">Gagal memuat tabel: ${err.message}</td></tr>`;
+    document.getElementById("driver-pagination-info").textContent = "";
+    document.getElementById("driver-pagination-pages").innerHTML = "";
     return;
   }
 
@@ -818,21 +824,28 @@ function renderDriverTable() {
   filtered.sort((a, b) => b.insentif - a.insentif);
 
   const tbody = document.getElementById("driver-table-body");
-  const note = document.getElementById("driver-table-note");
+  const infoEl = document.getElementById("driver-pagination-info");
+  const pagesEl = document.getElementById("driver-pagination-pages");
 
   if (!filtered.length) {
     tbody.innerHTML = `<tr><td colspan="11" class="driver-table-empty">Tidak ada data untuk filter ini.</td></tr>`;
-    note.textContent = "";
+    infoEl.textContent = "";
+    pagesEl.innerHTML = "";
     return;
   }
 
-  const shown = filtered.slice(0, DRIVER_TABLE_LIMIT);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / DRIVER_PAGE_SIZE));
+  if (currentDriverPage > totalPages) currentDriverPage = totalPages;
+  if (currentDriverPage < 1) currentDriverPage = 1;
+
+  const startIdx = (currentDriverPage - 1) * DRIVER_PAGE_SIZE;
+  const shown = filtered.slice(startIdx, startIdx + DRIVER_PAGE_SIZE);
   const catLabel = { high: "High", mid: "Mid", low: "Low" };
   const catClass = { high: "driver-pill-cat-high", mid: "driver-pill-cat-mid", low: "driver-pill-cat-low" };
 
   tbody.innerHTML = shown.map((r, i) => `
     <tr>
-      <td>${i + 1}</td>
+      <td>${startIdx + i + 1}</td>
       <td class="driver-name">${escapeHtml(r.name)}</td>
       <td><span class="driver-pill driver-pill-role-${r.role}">${r.role === "driver" ? "Driver" : "Kenek"}</span></td>
       <td><span class="driver-pill driver-pill-site">Hub ${escapeHtml(r.siteLabel)}</span></td>
@@ -846,9 +859,108 @@ function renderDriverTable() {
     </tr>
   `).join("");
 
-  note.textContent = filtered.length > DRIVER_TABLE_LIMIT
-    ? `Menampilkan ${numFmt(DRIVER_TABLE_LIMIT)} dari ${numFmt(filtered.length)} entri (diurutkan dari insentif tertinggi).`
-    : `Menampilkan semua ${numFmt(filtered.length)} entri.`;
+  infoEl.textContent = `${numFmt(startIdx + 1)}\u2013${numFmt(Math.min(startIdx + DRIVER_PAGE_SIZE, filtered.length))} dari ${numFmt(filtered.length)} MPP`;
+  renderDriverPaginationButtons(totalPages);
+}
+
+function renderDriverPaginationButtons(totalPages) {
+  const pagesEl = document.getElementById("driver-pagination-pages");
+  const goTo = (p) => {
+    if (p < 1 || p > totalPages || p === currentDriverPage) return;
+    currentDriverPage = p;
+    renderDriverTable();
+  };
+
+  const btn = (label, page, opts = {}) => {
+    const b = document.createElement("button");
+    b.className = "page-btn" + (opts.active ? " active" : "");
+    b.textContent = label;
+    if (opts.disabled) b.disabled = true;
+    else b.addEventListener("click", () => goTo(page));
+    return b;
+  };
+  const ellipsis = () => {
+    const b = document.createElement("button");
+    b.className = "page-btn page-btn-ellipsis";
+    b.textContent = "\u2026";
+    b.disabled = true;
+    return b;
+  };
+
+  pagesEl.innerHTML = "";
+  pagesEl.appendChild(btn("\u2039", currentDriverPage - 1, { disabled: currentDriverPage === 1 }));
+
+  // Nomor halaman: selalu tampilkan halaman pertama, terakhir, dan yang
+  // berdekatan dengan halaman aktif; sisanya diringkas jadi "...".
+  const pageNums = new Set([1, totalPages, currentDriverPage, currentDriverPage - 1, currentDriverPage + 1]);
+  let prev = 0;
+  Array.from(pageNums)
+    .filter((p) => p >= 1 && p <= totalPages)
+    .sort((a, b) => a - b)
+    .forEach((p) => {
+      if (prev && p - prev > 1) pagesEl.appendChild(ellipsis());
+      pagesEl.appendChild(btn(String(p), p, { active: p === currentDriverPage }));
+      prev = p;
+    });
+
+  pagesEl.appendChild(btn("\u203A", currentDriverPage + 1, { disabled: currentDriverPage === totalPages }));
+}
+
+// Daftar orang (NIK) yang minimal 2 BULAN BERBEDA masuk kategori High,
+// dihitung lintas SEMUA bulan (bukan cuma bulan yg dipilih di topbar),
+// tapi tetap menghormati filter site yang aktif.
+function buildRecurringHighList() {
+  const rows = mppRowsAllMonths();
+  const entries = personMonthTotals(rows); // [{nik, month, total}]
+
+  const nameMap = {};
+  rows.forEach((r) => {
+    const dNik = cleanNik(r["NIK1"]);
+    if (dNik && !nameMap[dNik]) nameMap[dNik] = (r["driver"] || "").toString().trim();
+    const kNik = cleanNik(r["nik2"]);
+    if (kNik && !nameMap[kNik]) nameMap[kNik] = (r["kenek1"] || "").toString().trim();
+  });
+
+  const byNik = {}; // nik -> Set bulan yang kategorinya "high"
+  entries.forEach((e) => {
+    if (mppCategory(e.total) !== "high") return;
+    if (!byNik[e.nik]) byNik[e.nik] = new Set();
+    byNik[e.nik].add(e.month);
+  });
+
+  return Object.entries(byNik)
+    .filter(([, months]) => months.size >= 2)
+    .map(([nik, months]) => {
+      const sorted = Array.from(months).sort();
+      return {
+        nik,
+        name: nameMap[nik] || nik,
+        months: sorted.map((mk) => MONTH_NAMES_ID[parseInt(mk.split("-")[1], 10) - 1]),
+        count: months.size,
+      };
+    })
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
+function renderRecurringHighBanner() {
+  const box = document.getElementById("mpp-recurring-high");
+  let list;
+  try {
+    list = buildRecurringHighList();
+  } catch (err) {
+    console.error("Gagal membangun daftar High berulang:", err);
+    box.style.display = "none";
+    return;
+  }
+
+  if (!list.length) {
+    box.style.display = "none";
+    return;
+  }
+
+  box.style.display = "block";
+  const items = list.map((d) => `${escapeHtml(d.name)} (${d.months.join(",")})`).join(" \u00B7 ");
+  box.innerHTML = `\u2B50 <strong>Driver High berulang (MoM):</strong> ${items}`;
 }
 
 function wireDriverTabs() {
@@ -857,6 +969,7 @@ function wireDriverTabs() {
       document.querySelectorAll(".driver-tab").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
       currentDriverCategory = btn.dataset.cat;
+      currentDriverPage = 1;
       renderDriverTable();
     });
   });
