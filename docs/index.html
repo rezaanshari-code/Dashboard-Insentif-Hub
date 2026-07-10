@@ -7,9 +7,9 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=202607090456222777740000">
+<link rel="stylesheet" href="style.css?v=202607100217461541380000">
 <!-- index.html ini di-generate otomatis dari template.html oleh scripts/fetch_sheets.py. JANGAN edit index.html langsung — perubahan akan ketimpa run berikutnya. Edit template.html. -->
-<!-- build: 2026-07-09T04:56:22.277774+00:00 -->
+<!-- build: 2026-07-10T02:17:46.154138+00:00 -->
 </head>
 <body>
 
@@ -77,45 +77,123 @@
       </div>
     </header>
 
-    <section class="kpi-row" id="kpi-row">
-      <div class="kpi-card" style="--accent:#2563eb">
-        <div class="kpi-label">TOTAL TRIP</div>
-        <div class="kpi-value" id="kpi-trip">--</div>
-        <div class="kpi-sub" id="kpi-trip-sub">-- site</div>
-      </div>
-      <div class="kpi-card" style="--accent:#2563eb">
-        <div class="kpi-label">TOTAL DO</div>
-        <div class="kpi-value" id="kpi-do">--</div>
-      </div>
-      <div class="kpi-card" style="--accent:#2563eb">
-        <div class="kpi-label">DROP POINT</div>
-        <div class="kpi-value" id="kpi-titik">--</div>
-      </div>
-      <div class="kpi-card" style="--accent:#f59e0b">
-        <div class="kpi-label">TOTAL UJP</div>
-        <div class="kpi-value" id="kpi-ujp">--</div>
-      </div>
-      <div class="kpi-card" style="--accent:#16a34a">
-        <div class="kpi-label">TOTAL INSENTIF</div>
-        <div class="kpi-value" id="kpi-insentif">--</div>
-      </div>
+    <section class="view" id="view-overview">
+      <section class="kpi-row" id="kpi-row">
+        <div class="kpi-card" style="--accent:#2563eb">
+          <div class="kpi-label">TOTAL TRIP</div>
+          <div class="kpi-value" id="kpi-trip">--</div>
+          <div class="kpi-sub" id="kpi-trip-sub">-- site</div>
+        </div>
+        <div class="kpi-card" style="--accent:#2563eb">
+          <div class="kpi-label">TOTAL DO</div>
+          <div class="kpi-value" id="kpi-do">--</div>
+        </div>
+        <div class="kpi-card" style="--accent:#2563eb">
+          <div class="kpi-label">DROP POINT</div>
+          <div class="kpi-value" id="kpi-titik">--</div>
+        </div>
+        <div class="kpi-card" style="--accent:#f59e0b">
+          <div class="kpi-label">TOTAL UJP</div>
+          <div class="kpi-value" id="kpi-ujp">--</div>
+        </div>
+        <div class="kpi-card" style="--accent:#16a34a">
+          <div class="kpi-label">TOTAL INSENTIF</div>
+          <div class="kpi-value" id="kpi-insentif">--</div>
+        </div>
+      </section>
+
+      <section class="map-panel">
+        <div class="map-panel-header">
+          <div>
+            <div class="map-title" id="map-title">Sebaran Site &mdash; 2026</div>
+            <div class="map-sub">Klik label site untuk detail</div>
+          </div>
+        </div>
+        <div class="map-body">
+          <div class="map-stage" id="map-stage">
+            <div id="map"></div>
+            <svg class="leader-svg" id="leader-svg"></svg>
+            <div class="label-col label-col-left" id="label-col-left"></div>
+            <div class="label-col label-col-right" id="label-col-right"></div>
+          </div>
+        </div>
+      </section>
     </section>
 
-    <section class="map-panel">
-      <div class="map-panel-header">
-        <div>
-          <div class="map-title" id="map-title">Sebaran Site &mdash; 2026</div>
-          <div class="map-sub">Klik label site untuk detail</div>
+    <section class="view" id="view-mpp" style="display:none">
+      <section class="kpi-row kpi-row-4" id="mpp-kpi-row">
+        <div class="kpi-card" style="--accent:#ef4444">
+          <div class="kpi-label">HIGH &gt;1.5JT</div>
+          <div class="kpi-value" id="mpp-kpi-high">--</div>
+          <div class="kpi-sub">MPP</div>
         </div>
-      </div>
-      <div class="map-body">
-        <div class="map-stage" id="map-stage">
-          <div id="map"></div>
-          <svg class="leader-svg" id="leader-svg"></svg>
-          <div class="label-col label-col-left" id="label-col-left"></div>
-          <div class="label-col label-col-right" id="label-col-right"></div>
+        <div class="kpi-card" style="--accent:#f59e0b">
+          <div class="kpi-label">MID 500RB&ndash;1.5JT</div>
+          <div class="kpi-value" id="mpp-kpi-mid">--</div>
+          <div class="kpi-sub">MPP</div>
         </div>
-      </div>
+        <div class="kpi-card" style="--accent:#16a34a">
+          <div class="kpi-label">LOW &lt;500RB</div>
+          <div class="kpi-value" id="mpp-kpi-low">--</div>
+          <div class="kpi-sub">MPP</div>
+        </div>
+        <div class="kpi-card" style="--accent:#2563eb">
+          <div class="kpi-label">TOTAL MPP</div>
+          <div class="kpi-value" id="mpp-kpi-total">--</div>
+          <div class="kpi-sub">driver + kenek</div>
+        </div>
+      </section>
+
+      <section class="chart-row">
+        <div class="chart-panel">
+          <div class="chart-title">Kategori MPP per Bulan</div>
+          <div class="chart-sub" id="mpp-monthly-sub">-- site</div>
+          <div class="chart-canvas-wrap"><canvas id="mpp-monthly-chart"></canvas></div>
+        </div>
+        <div class="chart-panel">
+          <div class="chart-title">Distribusi Insentif MPP</div>
+          <div class="chart-sub">Histogram per range nilai</div>
+          <div class="chart-canvas-wrap"><canvas id="mpp-histogram-chart"></canvas></div>
+        </div>
+      </section>
+
+      <section class="map-panel">
+        <div class="map-panel-header">
+          <div>
+            <div class="map-title">Daftar Driver MPP</div>
+            <div class="map-sub" id="mpp-filter-aktif">Filter aktif: --</div>
+          </div>
+        </div>
+        <div class="driver-stats-row">
+          <div class="driver-stat-card">
+            <div class="driver-stat-label">&uarr; MAX INSENTIF</div>
+            <div class="driver-stat-value" id="mpp-stat-max">--</div>
+            <div class="driver-stat-sub" id="mpp-stat-max-sub">-- entri &middot; filter aktif</div>
+          </div>
+          <div class="driver-stat-card">
+            <div class="driver-stat-label">&darr; MIN INSENTIF</div>
+            <div class="driver-stat-value" id="mpp-stat-min">--</div>
+            <div class="driver-stat-sub" id="mpp-stat-min-sub">-- entri &middot; filter aktif</div>
+          </div>
+          <div class="driver-stat-card">
+            <div class="driver-stat-label">&asymp; MEAN INSENTIF</div>
+            <div class="driver-stat-value" id="mpp-stat-mean">--</div>
+            <div class="driver-stat-sub" id="mpp-stat-mean-sub">-- entri &middot; filter aktif</div>
+          </div>
+          <div class="driver-stat-card">
+            <div class="driver-stat-label">&Sigma; STD DEVIASI</div>
+            <div class="driver-stat-value" id="mpp-stat-std">--</div>
+            <div class="driver-stat-sub" id="mpp-stat-std-sub">-- entri &middot; filter aktif</div>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section class="view" id="view-insight" style="display:none">
+      <section class="map-panel">
+        <div class="map-title">Insight</div>
+        <div class="map-sub">Segera hadir.</div>
+      </section>
     </section>
 
     <section class="status-line" id="status-line">Memuat data dari Google Sheets&hellip;</section>
@@ -133,7 +211,8 @@
   </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="app.js?v=202607090456222777740000"></script>
+<script src="app.js?v=202607100217461541380000"></script>
 </body>
 </html>
