@@ -46,6 +46,18 @@ function parseTanggal(val) {
   return new Date(y, m - 1, d);
 }
 
+// Parse "YYYY-MM-DD" (format bawaan <input type="date">) jadi Date LOCAL
+// midnight -- sengaja TIDAK pakai `new Date(str)` karena itu di-parse
+// sebagai UTC midnight oleh JS, yang mismatch sama parseTanggal() di atas.
+function parseISODateLocal(str) {
+  if (!str) return null;
+  const parts = String(str).split("-");
+  if (parts.length !== 3) return null;
+  const [y, m, d] = parts.map((p) => parseInt(p, 10));
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d);
+}
+
 function monthKey(date) {
   return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0");
 }
@@ -114,10 +126,16 @@ function getFilteredRows(hubKey) {
   const rows = RAW[hubKey] || [];
   if (String(currentMonth).startsWith("custom:")) {
     const [, from, to] = currentMonth.split(":");
-    const fromD = new Date(from), toD = new Date(to);
+    // PENTING: jangan pakai `new Date("YYYY-MM-DD")` -- string ISO
+    // tanpa jam di-parse sebagai UTC midnight oleh JS, sedangkan
+    // parseTanggal() bikin local midnight. Di timezone WIB (UTC+7) itu
+    // beda 7 jam, dan bikin tanggal PALING AWAL di range ke-exclude
+    // secara diam-diam. Parse dengan cara yang sama (local) biar konsisten.
+    const fromD = parseISODateLocal(from);
+    const toD = parseISODateLocal(to);
     return rows.filter((r) => {
       const d = parseTanggal(r["Tanggal"]);
-      return d && d >= fromD && d <= toD;
+      return d && fromD && toD && d >= fromD && d <= toD;
     });
   }
   if (currentMonth === "all") {
@@ -401,8 +419,8 @@ function isMppViewActive() {
 const CUSTOM_MONTH_VALUE = "__custom__";
 
 function formatShortDate(isoStr) {
-  const d = new Date(isoStr);
-  if (isNaN(d)) return isoStr;
+  const d = parseISODateLocal(isoStr);
+  if (!d) return isoStr;
   return `${d.getDate()} ${MONTH_NAMES_ID[d.getMonth()]} ${d.getFullYear()}`;
 }
 
