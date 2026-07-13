@@ -110,7 +110,6 @@ async function loadAllData() {
 
   populateYearOptions();
   populateMonthOptions();
-  populateYtdYearOptions();
   renderAll();
 }
 
@@ -464,12 +463,6 @@ function wireControls() {
     renderAll();
   });
 
-  document.getElementById("ytd-year-select").addEventListener("change", (e) => {
-    currentYtdYear = e.target.value;
-    currentDriverPage = 1;
-    renderDriverTable();
-  });
-
   document.getElementById("btn-full-month").addEventListener("click", () => {
     document.getElementById("date-from").value = "";
     document.getElementById("date-to").value = "";
@@ -639,7 +632,9 @@ function renderMppView() {
 
   const siteLabel = currentSite === "all" ? "Semua Site" : "Hub " + (HUBS.find((h) => h.key === currentSite)?.label || "");
   const monthLabel = document.getElementById("month-select").selectedOptions[0]?.textContent || "Semua Bulan";
-  document.getElementById("mpp-filter-aktif").textContent = `Filter aktif: ${siteLabel} \u00B7 ${monthLabel}`;
+  const ytdYears = Array.from(getActiveYtdYears()).sort().join("+");
+  document.getElementById("mpp-filter-aktif").textContent =
+    `Filter aktif: ${siteLabel} \u00B7 ${monthLabel} (Total YTD: tahun ${ytdYears})`;
 
   renderMppMonthlyChart();
   renderMppHistogram(filteredValues);
@@ -802,21 +797,40 @@ function rupiahFull(n) {
 // ---------------- DAFTAR DRIVER MPP (tabel + filter kategori) ----------------
 
 let currentDriverCategory = "all";
-let currentYtdYear = "all"; // "all" | "2025" | "2026" | ...
 
-// Total insentif per orang (by NIK) across SEMUA bulan & SEMUA site --
-// dipakai buat kolom "Total YTD" (angka ini tidak berubah walau tabel
-// difilter ke 1 site/bulan tertentu, karena memang menunjukkan total
-// year-to-date orang itu). Dibatasi ke 1 TAHUN tertentu lewat dropdown
-// "Tahun YTD" (default "Semua Tahun" -- gabung semua tahun yang ada).
+// Tahun (atau kumpulan tahun) yang lagi "aktif" berdasarkan filter topbar
+// yang sedang dipakai -- dipakai buat batasin "Total YTD" biar otomatis
+// ngikutin periode yang difilter, tanpa perlu dropdown tahun terpisah lagi.
+//   - "all"        -> tahun currentYear aja
+//   - "YYYY-MM"     -> tahun dari bulan itu
+//   - "custom:a:b"  -> SEMUA tahun yang tercakup dalam range a..b
+//                      (kalau range-nya nyebrang tahun, mis. Des 2025-Jan
+//                      2026, YTD gabung KEDUA tahun itu)
+function getActiveYtdYears() {
+  if (String(currentMonth).startsWith("custom:")) {
+    const [, from, to] = currentMonth.split(":");
+    const fromD = parseISODateLocal(from);
+    const toD = parseISODateLocal(to);
+    if (!fromD || !toD) return new Set([String(currentYear)]);
+    const years = new Set();
+    for (let y = fromD.getFullYear(); y <= toD.getFullYear(); y++) years.add(String(y));
+    return years;
+  }
+  if (currentMonth === "all") return new Set([String(currentYear)]);
+  return new Set([String(currentMonth).split("-")[0]]); // "YYYY-MM" -> "YYYY"
+}
+
+// Total insentif per orang (by NIK), dibatasi ke tahun (atau kumpulan
+// tahun) yang lagi aktif di filter topbar -- dipakai buat kolom "Total
+// YTD". Beda dari kolom "Insentif MPP" yang cuma 1 bulan spesifik, YTD ini
+// gabung semua bulan DALAM tahun yang sama, tapi tetap ikut site yang aktif.
 function ytdTotalsByNik() {
+  const activeYears = getActiveYtdYears();
   const totals = {};
   HUBS.forEach((hub) => {
     (RAW[hub.key] || []).forEach((r) => {
-      if (currentYtdYear !== "all") {
-        const d = parseTanggal(r["Tanggal"]);
-        if (!d || String(d.getFullYear()) !== currentYtdYear) return;
-      }
+      const d = parseTanggal(r["Tanggal"]);
+      if (!d || !activeYears.has(String(d.getFullYear()))) return;
       const val = toNumber(r[MPP_FIELD]);
       const dNik = cleanNik(r["NIK1"]);
       if (dNik) totals[dNik] = (totals[dNik] || 0) + val;
@@ -825,38 +839,6 @@ function ytdTotalsByNik() {
     });
   });
   return totals;
-}
-
-// Isi dropdown "Tahun YTD" dari tahun-tahun yang beneran ada di data
-// (dipanggil sekali setelah data.json dimuat).
-function populateYtdYearOptions() {
-  const years = new Set();
-  HUBS.forEach((hub) => {
-    (RAW[hub.key] || []).forEach((r) => {
-      const d = parseTanggal(r["Tanggal"]);
-      if (d) years.add(d.getFullYear());
-    });
-  });
-  const sorted = Array.from(years).sort((a, b) => b - a); // terbaru dulu
-
-  const sel = document.getElementById("ytd-year-select");
-  if (!sel) return;
-  const prevValue = sel.value || "all";
-  sel.innerHTML = '<option value="all">Semua Tahun</option>';
-  sorted.forEach((y) => {
-    const opt = document.createElement("option");
-    opt.value = String(y);
-    opt.textContent = String(y);
-    sel.appendChild(opt);
-  });
-  // Pertahankan pilihan sebelumnya kalau masih valid, default "all" kalau belum pernah dipilih.
-  if (sorted.some((y) => String(y) === prevValue) || prevValue === "all") {
-    sel.value = prevValue;
-    currentYtdYear = prevValue;
-  } else {
-    sel.value = "all";
-    currentYtdYear = "all";
-  }
 }
 
 // Format TAT sumber ("H:MM" atau "H:MM:SS") jadi menit desimal.
