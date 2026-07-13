@@ -144,7 +144,7 @@ function hubMetrics(hubKey) {
     doTotal += toNumber(r["Jumlah_do"]);
     titik += toNumber(r["jumlah_titik"]);
     ujp += toNumber(r["UJP"]);
-    insentif += toNumber(r["total_insentif"]);
+    insentif += toNumber(r["Insentif Ref"]);
   });
   return { trip, doTotal, titik, ujp, insentif };
 }
@@ -398,6 +398,35 @@ function isMppViewActive() {
   return el && el.style.display !== "none";
 }
 
+const CUSTOM_MONTH_VALUE = "__custom__";
+
+function formatShortDate(isoStr) {
+  const d = new Date(isoStr);
+  if (isNaN(d)) return isoStr;
+  return `${d.getDate()} ${MONTH_NAMES_ID[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+// Tampilkan/perbarui opsi "Custom: ..." di dropdown Bulan supaya dropdown
+// itu selalu jadi SATU sumber kebenaran soal filter periode yang aktif --
+// nggak ada lagi kondisi di mana dropdown nunjuk ke bulan tertentu padahal
+// yang beneran ngefilter data adalah date range custom.
+function setCustomMonthOption(from, to) {
+  const sel = document.getElementById("month-select");
+  let opt = sel.querySelector(`option[value="${CUSTOM_MONTH_VALUE}"]`);
+  if (!opt) {
+    opt = document.createElement("option");
+    opt.value = CUSTOM_MONTH_VALUE;
+    sel.appendChild(opt);
+  }
+  opt.textContent = `Custom: ${formatShortDate(from)} \u2013 ${formatShortDate(to)}`;
+  sel.value = CUSTOM_MONTH_VALUE;
+}
+
+function removeCustomMonthOption() {
+  const opt = document.querySelector(`#month-select option[value="${CUSTOM_MONTH_VALUE}"]`);
+  if (opt) opt.remove();
+}
+
 function wireControls() {
   document.querySelectorAll(".nav-item[data-view]").forEach((btn) => {
     btn.addEventListener("click", () => switchView(btn.dataset.view, btn));
@@ -412,6 +441,7 @@ function wireControls() {
   });
 
   document.getElementById("month-select").addEventListener("change", (e) => {
+    removeCustomMonthOption();
     currentMonth = e.target.value;
     renderAll();
   });
@@ -425,6 +455,7 @@ function wireControls() {
   document.getElementById("btn-full-month").addEventListener("click", () => {
     document.getElementById("date-from").value = "";
     document.getElementById("date-to").value = "";
+    removeCustomMonthOption();
     currentMonth = "all";
     document.getElementById("month-select").value = "all";
     renderAll();
@@ -436,6 +467,7 @@ function wireControls() {
     if (!from || !to) return;
     // Simple range filter: override currentMonth with a custom predicate
     currentMonth = "custom:" + from + ":" + to;
+    setCustomMonthOption(from, to);
     renderAll();
   });
 
