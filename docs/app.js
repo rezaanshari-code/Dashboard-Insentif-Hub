@@ -888,7 +888,7 @@ function escapeHtml(str) {
 // menghormati filter site+bulan yang aktif di topbar.
 function buildDriverTableRows() {
   const keys = activeHubKeys();
-  const groups = {}; // "nik|bulan|hubKey|role" -> akumulasi
+  const groups = {}; // "nik|bulan|hubKey" -> akumulasi (role TIDAK ikut jadi key)
 
   keys.forEach((hubKey) => {
     getFilteredRows(hubKey).forEach((r) => {
@@ -901,24 +901,36 @@ function buildDriverTableRows() {
 
       const dNik = cleanNik(r["NIK1"]);
       if (dNik) {
-        const gk = `${dNik}|${mk}|${hubKey}|driver`;
+        const gk = `${dNik}|${mk}|${hubKey}`;
         if (!groups[gk]) {
-          groups[gk] = { nik: dNik, name: (r["driver"] || "").toString().trim() || "-", role: "driver", hubKey, month: mk, insentif: 0, tatSum: 0, tatCount: 0, dp: 0 };
+          groups[gk] = {
+            nik: dNik, hubKey, month: mk, insentif: 0, tatSum: 0, tatCount: 0, dp: 0,
+            roleCount: { driver: 0, kenek: 0 }, nameByRole: { driver: "", kenek: "" },
+          };
         }
-        groups[gk].insentif += val;
-        groups[gk].dp += dp;
-        if (tatMin !== null) { groups[gk].tatSum += tatMin; groups[gk].tatCount++; }
+        const g = groups[gk];
+        g.insentif += val;
+        g.dp += dp;
+        g.roleCount.driver++;
+        if (!g.nameByRole.driver) g.nameByRole.driver = (r["driver"] || "").toString().trim();
+        if (tatMin !== null) { g.tatSum += tatMin; g.tatCount++; }
       }
 
       const kNik = cleanNik(r["nik2"]);
       if (kNik) {
-        const gk = `${kNik}|${mk}|${hubKey}|kenek`;
+        const gk = `${kNik}|${mk}|${hubKey}`;
         if (!groups[gk]) {
-          groups[gk] = { nik: kNik, name: (r["kenek1"] || "").toString().trim() || "-", role: "kenek", hubKey, month: mk, insentif: 0, tatSum: 0, tatCount: 0, dp: 0 };
+          groups[gk] = {
+            nik: kNik, hubKey, month: mk, insentif: 0, tatSum: 0, tatCount: 0, dp: 0,
+            roleCount: { driver: 0, kenek: 0 }, nameByRole: { driver: "", kenek: "" },
+          };
         }
-        groups[gk].insentif += val;
-        groups[gk].dp += dp;
-        if (tatMin !== null) { groups[gk].tatSum += tatMin; groups[gk].tatCount++; }
+        const g = groups[gk];
+        g.insentif += val;
+        g.dp += dp;
+        g.roleCount.kenek++;
+        if (!g.nameByRole.kenek) g.nameByRole.kenek = (r["kenek1"] || "").toString().trim();
+        if (tatMin !== null) { g.tatSum += tatMin; g.tatCount++; }
       }
     });
   });
@@ -928,10 +940,16 @@ function buildDriverTableRows() {
   return Object.values(groups).map((g) => {
     const hub = HUBS.find((h) => h.key === g.hubKey);
     const m = parseInt(g.month.split("-")[1], 10);
+    // Role final = peran yang paling sering muncul buat orang ini di bulan
+    // itu (kalau dia pernah jadi driver DI SATU trip dan kenek di trip
+    // lain, bulan yang sama, insentifnya digabung jadi 1 baris -- role
+    // yang ditampilkan cuma yang paling dominan).
+    const role = g.roleCount.kenek > g.roleCount.driver ? "kenek" : "driver";
+    const name = g.nameByRole[role] || g.nameByRole.driver || g.nameByRole.kenek || "-";
     return {
       nik: g.nik,
-      name: g.name,
-      role: g.role,
+      name: name || "-",
+      role,
       siteLabel: hub ? hub.label : g.hubKey,
       monthLabel: MONTH_NAMES_ID[m - 1],
       category: mppCategory(g.insentif),
