@@ -1208,23 +1208,52 @@ let insightCustomRange = null; // {from, to} kalau user pakai Filter Range Tangg
 // Tentukan periode aktif + 2 pembanding (periode-sebelumnya & YoY),
 // berdasarkan filter topbar (atau override Filter Range Tanggal khusus
 // Insight). Return { active:{from,to,label}, prev:{...}, yoy:{...}, momLabel }.
+// Geser tanggal d sejumlah deltaMonths bulan kalender (bisa negatif),
+// tanggal-di-bulan dipertahankan (clamp kalau bulan tujuan lebih pendek,
+// mis. 31 Jan -1bulan -> 28/29 Feb, bukan error/NaN).
+function shiftMonths(d, deltaMonths) {
+  const idx = d.getMonth() + deltaMonths;
+  const year = d.getFullYear() + Math.floor(idx / 12);
+  const month = ((idx % 12) + 12) % 12;
+  const daysInTarget = new Date(year, month + 1, 0).getDate();
+  return new Date(year, month, Math.min(d.getDate(), daysInTarget));
+}
+
+function shiftYears(d, deltaYears) {
+  return new Date(d.getFullYear() + deltaYears, d.getMonth(), d.getDate());
+}
+
+function fmtRangeLabel(a, b) {
+  return `${formatShortDate2(a)}\u2013${formatShortDate2(b)}`;
+}
+
 function getInsightPeriods() {
-  // Kalau ada custom range khusus Insight -> pakai itu, pembanding = durasi
-  // sama tepat sebelumnya (prev) & range sama tahun lalu (yoy).
+  // ---- Sumber periode aktif: prioritas custom range khusus Insight,
+  // baru custom range dari topbar (Terapkan), baru periode kalender biasa.
+  let activeRange = null;
   if (insightCustomRange) {
-    const from = parseISODateLocal(insightCustomRange.from);
-    const to = parseISODateLocal(insightCustomRange.to);
-    const msPerDay = 86400000;
-    const durationDays = Math.round((to - from) / msPerDay) + 1;
-    const prevTo = new Date(from.getTime() - msPerDay);
-    const prevFrom = new Date(prevTo.getTime() - (durationDays - 1) * msPerDay);
-    const yoyFrom = new Date(from.getFullYear() - 1, from.getMonth(), from.getDate());
-    const yoyTo = new Date(to.getFullYear() - 1, to.getMonth(), to.getDate());
-    const fmt = (a, b) => `${formatShortDate2(a)}\u2013${formatShortDate2(b)}`;
+    activeRange = {
+      from: parseISODateLocal(insightCustomRange.from),
+      to: parseISODateLocal(insightCustomRange.to),
+    };
+  } else if (String(currentMonth).startsWith("custom:")) {
+    const [, from, to] = currentMonth.split(":");
+    activeRange = { from: parseISODateLocal(from), to: parseISODateLocal(to) };
+  }
+
+  if (activeRange && activeRange.from && activeRange.to) {
+    const { from, to } = activeRange;
+    // Pembanding "sebelumnya": TANGGAL YANG SAMA, mundur 1 BULAN KALENDER
+    // penuh (bukan geser N hari) -- 1-11 Jul -> 1-11 Jun.
+    const prevFrom = shiftMonths(from, -1);
+    const prevTo = shiftMonths(to, -1);
+    // YoY: tanggal & bulan yang sama, mundur 1 tahun.
+    const yoyFrom = shiftYears(from, -1);
+    const yoyTo = shiftYears(to, -1);
     return {
-      active: { from, to, label: fmt(from, to) },
-      prev:   { from: prevFrom, to: prevTo, label: fmt(prevFrom, prevTo) },
-      yoy:    { from: yoyFrom, to: yoyTo, label: fmt(yoyFrom, yoyTo) },
+      active: { from, to, label: fmtRangeLabel(from, to) },
+      prev:   { from: prevFrom, to: prevTo, label: fmtRangeLabel(prevFrom, prevTo) },
+      yoy:    { from: yoyFrom, to: yoyTo, label: fmtRangeLabel(yoyFrom, yoyTo) },
       momLabel: "MoM",
     };
   }
