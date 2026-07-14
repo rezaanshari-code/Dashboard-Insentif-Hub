@@ -123,6 +123,15 @@ function setStatus(msg, isError) {
 
 function getFilteredRows(hubKey) {
   const rows = RAW[hubKey] || [];
+  if (PERIOD_RANGES[currentMonth]) {
+    const [startM, endM] = PERIOD_RANGES[currentMonth];
+    const fromD = new Date(Number(currentYear), startM - 1, 1);
+    const toD = new Date(Number(currentYear), endM, 0); // hari terakhir bulan endM
+    return rows.filter((r) => {
+      const d = parseTanggal(r["Tanggal"]);
+      return d && d >= fromD && d <= toD;
+    });
+  }
   if (String(currentMonth).startsWith("custom:")) {
     const [, from, to] = currentMonth.split(":");
     // PENTING: jangan pakai `new Date("YYYY-MM-DD")` -- string ISO
@@ -200,6 +209,12 @@ function populateYearOptions() {
 
 // Isi dropdown "Bulan" HANYA dengan bulan-bulan yang ada di currentYear
 // (dipanggil ulang tiap kali tahun diganti).
+// Definisi rentang bulan (1-12, inklusif) untuk tiap kode periode.
+const PERIOD_RANGES = {
+  q1: [1, 3], q2: [4, 6], q3: [7, 9], q4: [10, 12],
+  h1: [1, 6], h2: [7, 12],
+};
+
 function populateMonthOptions() {
   const monthSet = new Set();
   Object.values(RAW).forEach((rows) => {
@@ -212,6 +227,19 @@ function populateMonthOptions() {
   const sel = document.getElementById("month-select");
   sel.innerHTML = `<option value="all">Semua Bulan (${currentYear})</option>`;
   const monthNames = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
+
+  // Opsi kuartal/semester -- selalu ditampilkan (nggak tergantung ada
+  // datanya atau nggak, karena ini cuma rentang kalender biasa).
+  const periodGroup = document.createElement("optgroup");
+  periodGroup.label = "Kuartal & Semester";
+  Object.entries(PERIOD_RANGES).forEach(([code, [startM, endM]]) => {
+    const opt = document.createElement("option");
+    opt.value = code;
+    opt.textContent = `${code.toUpperCase()} (${monthNames[startM-1]}\u2013${monthNames[endM-1]} ${currentYear})`;
+    periodGroup.appendChild(opt);
+  });
+  sel.appendChild(periodGroup);
+
   months.forEach((mk) => {
     const [y, m] = mk.split("-");
     const opt = document.createElement("option");
@@ -807,6 +835,7 @@ let currentDriverCategory = "all";
 //                      (kalau range-nya nyebrang tahun, mis. Des 2025-Jan
 //                      2026, YTD gabung KEDUA tahun itu)
 function getActiveYtdYears() {
+  if (PERIOD_RANGES[currentMonth]) return new Set([String(currentYear)]);
   if (String(currentMonth).startsWith("custom:")) {
     const [, from, to] = currentMonth.split(":");
     const fromD = parseISODateLocal(from);
