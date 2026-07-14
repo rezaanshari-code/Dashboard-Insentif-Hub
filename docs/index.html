@@ -7,9 +7,9 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=202607131022556514930000">
+<link rel="stylesheet" href="style.css?v=202607140304073072420000">
 <!-- index.html ini di-generate otomatis dari template.html oleh scripts/fetch_sheets.py. JANGAN edit index.html langsung — perubahan akan ketimpa run berikutnya. Edit template.html. -->
-<!-- build: 2026-07-13T10:22:55.651493+00:00 -->
+<!-- build: 2026-07-14T03:04:07.307242+00:00 -->
 </head>
 <body>
 
@@ -234,8 +234,28 @@
 
     <section class="view" id="view-insight" style="display:none">
       <section class="map-panel">
-        <div class="map-title">Insight</div>
-        <div class="map-sub">Segera hadir.</div>
+        <div class="insight-range-bar">
+          <label class="insight-range-label">Filter Range Tanggal:</label>
+          <input type="date" id="insight-date-from" class="input-date">
+          <span class="insight-range-dash">&mdash;</span>
+          <input type="date" id="insight-date-to" class="input-date">
+          <button class="btn btn-ghost" id="insight-range-reset">Reset</button>
+        </div>
+        <div class="insight-range-caption" id="insight-range-caption">--</div>
+      </section>
+
+      <section class="map-panel">
+        <div class="map-title" id="insight-table-title">Tabel Perbandingan</div>
+        <div class="insight-table-wrap">
+          <table class="insight-table">
+            <thead>
+              <tr id="insight-table-head"></tr>
+            </thead>
+            <tbody id="insight-table-body">
+              <tr><td colspan="9" class="driver-table-empty">Memuat&hellip;</td></tr>
+            </tbody>
+          </table>
+        </div>
       </section>
     </section>
 
@@ -256,6 +276,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="app.js?v=202607131022556514930000"></script>
+<script src="app.js?v=202607140304073072420000"></script>
 </body>
 </html>
