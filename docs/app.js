@@ -1288,15 +1288,15 @@ function getInsightPeriods() {
       else prev = monthRange(year, (qNum - 2) * 3 + 1, (qNum - 1) * 3, `Q${qNum - 1} ${year}`);
     }
     const yoy = monthRange(year - 1, sM, eM, `${code} ${year - 1}`);
-    return { active, prev, yoy, momLabel };
+    return applyMaxDataCap({ active, prev, yoy, momLabel }, isHalf ? 6 : 3);
   }
 
   // --- Semua Bulan (setahun penuh) ---
   if (currentMonth === "all") {
     const active = monthRange(year, 1, 12, `Tahun ${year}`);
     const prev = monthRange(year - 1, 1, 12, `Tahun ${year - 1}`);
-    const yoy = prev; // untuk setahun penuh, "sebelumnya" & "YoY" sama saja
-    return { active, prev, yoy, momLabel: "YoY" };
+    const yoy = monthRange(year - 1, 1, 12, `Tahun ${year - 1}`); // objek terpisah dari prev (biar aman di-capping)
+    return applyMaxDataCap({ active, prev, yoy, momLabel: "YoY" }, 12);
   }
 
   // --- Bulan spesifik "YYYY-MM" ---
@@ -1307,11 +1307,54 @@ function getInsightPeriods() {
   const prevY = m === 1 ? y - 1 : y;
   const prev = monthRange(prevY, prevM, prevM, `${mn[prevM - 1]} ${prevY}`);
   const yoy = monthRange(y - 1, m, m, `${mn[m - 1]} ${y - 1}`);
-  return { active, prev, yoy, momLabel: "MoM" };
+  return applyMaxDataCap({ active, prev, yoy, momLabel: "MoM" }, 1);
 }
 
 function formatShortDate2(d) {
   return `${d.getDate()} ${MONTH_NAMES_ID[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+// Tanggal terakhir yang BENERAN ada datanya untuk site yang lagi aktif
+// (dipakai buat "capping" periode yang belum penuh -- mis. bulan Juli
+// baru keisi sampai tgl 11/19, dst).
+function getMaxDataDate() {
+  const keys = activeHubKeys();
+  let max = null;
+  keys.forEach((hubKey) => {
+    (RAW[hubKey] || []).forEach((r) => {
+      const d = parseTanggal(r["Tanggal"]);
+      if (d && (!max || d > max)) max = d;
+    });
+  });
+  return max;
+}
+
+// Kalau periode aktif ternyata "belum penuh" (data cuma sampai tanggal
+// tertentu di dalamnya -- biasanya ini terjadi pas periode aktif = bulan
+// berjalan yang paling baru), potong batas akhirnya ke tanggal terakhir
+// yang beneran ada datanya, DAN geser prev/yoy pakai tanggal yang SAMA
+// (bukan akhir bulan penuh) -- biar perbandingannya apple-to-apple.
+// periodMonths = berapa bulan mundur buat "prev" (1=bulanan, 3=kuartal,
+// 6=semester, 12=tahunan).
+function applyMaxDataCap(periods, periodMonths) {
+  const maxD = getMaxDataDate();
+  if (!maxD) return periods;
+  const { active, prev, yoy } = periods;
+  if (maxD >= active.from && maxD < active.to) {
+    const cappedTo = maxD;
+    const cappedNote = ` (s.d. ${formatShortDate2(cappedTo)})`;
+    active.to = cappedTo;
+    active.label = active.label + cappedNote;
+
+    const prevTo = shiftMonths(cappedTo, -periodMonths);
+    prev.to = prevTo;
+    prev.label = fmtRangeLabel(prev.from, prevTo);
+
+    const yoyTo = shiftYears(cappedTo, -1);
+    yoy.to = yoyTo;
+    yoy.label = fmtRangeLabel(yoy.from, yoyTo);
+  }
+  return periods;
 }
 
 // Agregat metrik dasar untuk 1 periode (rentang tanggal), ikut filter site.
