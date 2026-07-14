@@ -1085,24 +1085,47 @@ function renderDriverPaginationButtons(totalPages) {
 
 // Daftar orang (NIK) yang minimal 2 BULAN BERBEDA masuk kategori High,
 // dihitung lintas SEMUA bulan (bukan cuma bulan yg dipilih di topbar),
-// tapi tetap menghormati filter site yang aktif.
+// tapi tetap menghormati filter site yang aktif. Iterasi per-hub (bukan
+// pakai mppRowsAllMonths() yang sudah di-flatten) supaya bisa nangkep
+// nama hub/site-nya juga buat ditampilkan di tabel.
 function buildRecurringHighList() {
-  const rows = mppRowsAllMonths();
-  const entries = personMonthTotals(rows); // [{nik, month, total}]
+  const keys = activeHubKeys();
+  const totals = {};   // "nik|bulan" -> akumulasi Insentif per MPP
+  const nameMap = {};  // nik -> nama
+  const siteMap = {};  // nik -> label hub (pertama kali ketemu)
 
-  const nameMap = {};
-  rows.forEach((r) => {
-    const dNik = cleanNik(r["NIK1"]);
-    if (dNik && !nameMap[dNik]) nameMap[dNik] = (r["driver"] || "").toString().trim();
-    const kNik = cleanNik(r["nik2"]);
-    if (kNik && !nameMap[kNik]) nameMap[kNik] = (r["kenek1"] || "").toString().trim();
+  keys.forEach((hubKey) => {
+    const hub = HUBS.find((h) => h.key === hubKey);
+    (RAW[hubKey] || []).forEach((r) => {
+      const d = parseTanggal(r["Tanggal"]);
+      if (!d || String(d.getFullYear()) !== String(currentYear)) return;
+      const mk = monthKey(d);
+      const val = toNumber(r[MPP_FIELD]);
+
+      const dNik = cleanNik(r["NIK1"]);
+      if (dNik) {
+        const key = dNik + "|" + mk;
+        totals[key] = (totals[key] || 0) + val;
+        if (!nameMap[dNik]) nameMap[dNik] = (r["driver"] || "").toString().trim();
+        if (!siteMap[dNik]) siteMap[dNik] = hub ? hub.label : hubKey;
+      }
+      const kNik = cleanNik(r["nik2"]);
+      if (kNik) {
+        const key = kNik + "|" + mk;
+        totals[key] = (totals[key] || 0) + val;
+        if (!nameMap[kNik]) nameMap[kNik] = (r["kenek1"] || "").toString().trim();
+        if (!siteMap[kNik]) siteMap[kNik] = hub ? hub.label : hubKey;
+      }
+    });
   });
 
   const byNik = {}; // nik -> Set bulan yang kategorinya "high"
-  entries.forEach((e) => {
-    if (mppCategory(e.total) !== "high") return;
-    if (!byNik[e.nik]) byNik[e.nik] = new Set();
-    byNik[e.nik].add(e.month);
+  Object.entries(totals).forEach(([key, total]) => {
+    if (mppCategory(total) !== "high") return;
+    const sep = key.lastIndexOf("|");
+    const nik = key.slice(0, sep), mk = key.slice(sep + 1);
+    if (!byNik[nik]) byNik[nik] = new Set();
+    byNik[nik].add(mk);
   });
 
   return Object.entries(byNik)
@@ -1112,6 +1135,7 @@ function buildRecurringHighList() {
       return {
         nik,
         name: nameMap[nik] || nik,
+        site: siteMap[nik] || "-",
         months: sorted.map((mk) => MONTH_NAMES_ID[parseInt(mk.split("-")[1], 10) - 1]),
         count: months.size,
       };
@@ -1136,8 +1160,33 @@ function renderRecurringHighBanner() {
   }
 
   box.style.display = "block";
-  const items = list.map((d) => `${escapeHtml(d.name)} (${d.months.join(",")})`).join(" \u00B7 ");
-  box.innerHTML = `\u2B50 <strong>Driver High berulang (MoM):</strong> ${items}`;
+  const rowsHtml = list.map((d, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td class="recurring-name">${escapeHtml(d.name)}</td>
+      <td>Hub ${escapeHtml(d.site)}</td>
+      <td class="recurring-count">${d.count}x</td>
+      <td>${d.months.join(", ")}</td>
+    </tr>
+  `).join("");
+
+  box.innerHTML = `
+    <div class="recurring-high-title">\u2B50 Driver High Berulang (MoM)</div>
+    <div class="recurring-high-table-wrap">
+      <table class="recurring-high-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Nama</th>
+            <th>Site Hub</th>
+            <th>Total Berulang</th>
+            <th>Bulan Berulang</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>
+  `;
 }
 
 function wireDriverTabs() {
