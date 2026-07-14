@@ -262,6 +262,7 @@ function renderAll() {
   renderLegendAndMap();
   renderPageTitle();
   if (isMppViewActive()) renderMppView();
+  if (isInsightViewActive()) renderInsightView();
 }
 
 function renderPageTitle() {
@@ -436,6 +437,7 @@ function selectSite(key, btnEl) {
   renderKpis();
   renderLegendAndMap();
   if (isMppViewActive()) renderMppView();
+  if (isInsightViewActive()) renderInsightView();
 }
 
 function isMppViewActive() {
@@ -539,6 +541,12 @@ function switchView(view, btnEl) {
   document.getElementById("page-title").textContent = VIEW_TITLES[view] || "Overview";
 
   if (view === "mpp") renderMppView();
+  if (view === "insight") renderInsightView();
+}
+
+function isInsightViewActive() {
+  const el = document.getElementById("view-insight");
+  return el && el.style.display !== "none";
 }
 
 // ---------------- DISTRIBUSI MPP ----------------
@@ -1144,6 +1152,243 @@ function wireDriverTabs() {
   });
 }
 
+// ---------------- INSIGHT (Tabel Perbandingan periode) ----------------
+
+let insightCustomRange = null; // {from, to} kalau user pakai Filter Range Tanggal khusus tabel ini
+
+// Tentukan periode aktif + 2 pembanding (periode-sebelumnya & YoY),
+// berdasarkan filter topbar (atau override Filter Range Tanggal khusus
+// Insight). Return { active:{from,to,label}, prev:{...}, yoy:{...}, momLabel }.
+function getInsightPeriods() {
+  // Kalau ada custom range khusus Insight -> pakai itu, pembanding = durasi
+  // sama tepat sebelumnya (prev) & range sama tahun lalu (yoy).
+  if (insightCustomRange) {
+    const from = parseISODateLocal(insightCustomRange.from);
+    const to = parseISODateLocal(insightCustomRange.to);
+    const msPerDay = 86400000;
+    const durationDays = Math.round((to - from) / msPerDay) + 1;
+    const prevTo = new Date(from.getTime() - msPerDay);
+    const prevFrom = new Date(prevTo.getTime() - (durationDays - 1) * msPerDay);
+    const yoyFrom = new Date(from.getFullYear() - 1, from.getMonth(), from.getDate());
+    const yoyTo = new Date(to.getFullYear() - 1, to.getMonth(), to.getDate());
+    const fmt = (a, b) => `${formatShortDate2(a)}\u2013${formatShortDate2(b)}`;
+    return {
+      active: { from, to, label: fmt(from, to) },
+      prev:   { from: prevFrom, to: prevTo, label: fmt(prevFrom, prevTo) },
+      yoy:    { from: yoyFrom, to: yoyTo, label: fmt(yoyFrom, yoyTo) },
+      momLabel: "MoM",
+    };
+  }
+
+  const year = Number(currentYear);
+
+  // Helper bikin periode dari rentang bulan [startM,endM] di tahun tertentu.
+  const monthRange = (y, startM, endM, label) => ({
+    from: new Date(y, startM - 1, 1),
+    to: new Date(y, endM, 0),
+    label,
+  });
+  const mn = MONTH_NAMES_ID;
+
+  // --- Periode kuartal / semester ---
+  if (PERIOD_RANGES[currentMonth]) {
+    const code = currentMonth.toUpperCase();
+    const [sM, eM] = PERIOD_RANGES[currentMonth];
+    const isHalf = currentMonth.startsWith("h");
+    const active = monthRange(year, sM, eM, `${code} ${year}`);
+
+    // pembanding sebelumnya: mundur 1 kuartal/semester (bisa lewat tahun)
+    let prev, momLabel;
+    if (isHalf) {
+      momLabel = "HoH";
+      if (currentMonth === "h1") prev = monthRange(year - 1, 7, 12, `H2 ${year - 1}`);
+      else prev = monthRange(year, 1, 6, `H1 ${year}`);
+    } else {
+      momLabel = "QoQ";
+      const qNum = { q1: 1, q2: 2, q3: 3, q4: 4 }[currentMonth];
+      if (qNum === 1) prev = monthRange(year - 1, 10, 12, `Q4 ${year - 1}`);
+      else prev = monthRange(year, (qNum - 2) * 3 + 1, (qNum - 1) * 3, `Q${qNum - 1} ${year}`);
+    }
+    const yoy = monthRange(year - 1, sM, eM, `${code} ${year - 1}`);
+    return { active, prev, yoy, momLabel };
+  }
+
+  // --- Semua Bulan (setahun penuh) ---
+  if (currentMonth === "all") {
+    const active = monthRange(year, 1, 12, `Tahun ${year}`);
+    const prev = monthRange(year - 1, 1, 12, `Tahun ${year - 1}`);
+    const yoy = prev; // untuk setahun penuh, "sebelumnya" & "YoY" sama saja
+    return { active, prev, yoy, momLabel: "YoY" };
+  }
+
+  // --- Bulan spesifik "YYYY-MM" ---
+  const [yStr, mStr] = String(currentMonth).split("-");
+  const y = Number(yStr), m = Number(mStr);
+  const active = monthRange(y, m, m, `${mn[m - 1]} ${y}`);
+  const prevM = m === 1 ? 12 : m - 1;
+  const prevY = m === 1 ? y - 1 : y;
+  const prev = monthRange(prevY, prevM, prevM, `${mn[prevM - 1]} ${prevY}`);
+  const yoy = monthRange(y - 1, m, m, `${mn[m - 1]} ${y - 1}`);
+  return { active, prev, yoy, momLabel: "MoM" };
+}
+
+function formatShortDate2(d) {
+  return `${d.getDate()} ${MONTH_NAMES_ID[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+// Agregat metrik dasar untuk 1 periode (rentang tanggal), ikut filter site.
+function insightAggregate(fromD, toD) {
+  const keys = activeHubKeys();
+  let doTotal = 0, dp = 0, cbm = 0, trip = 0, ujp = 0, insentif = 0;
+  keys.forEach((hubKey) => {
+    (RAW[hubKey] || []).forEach((r) => {
+      const d = parseTanggal(r["Tanggal"]);
+      if (!d || d < fromD || d > toD) return;
+      trip += 1;
+      doTotal += toNumber(r["Jumlah_do"]);
+      dp += toNumber(r["jumlah_titik"]);
+      cbm += toNumber(r["CBM"]);
+      ujp += toNumber(r["UJP"]);
+      insentif += toNumber(r["Insentif Ref"]);
+    });
+  });
+  const safeDiv = (a, b) => (b ? a / b : 0);
+  return {
+    do: doTotal, dp, cbm, trip, ujp, insentif,
+    do_trip: safeDiv(doTotal, trip),
+    dp_trip: safeDiv(dp, trip),
+    do_dp: safeDiv(doTotal, dp),
+    cbm_dp: safeDiv(cbm, dp),
+    ujp_trip: safeDiv(ujp, trip),
+    ujp_do: safeDiv(ujp, doTotal),
+    ujp_dp: safeDiv(ujp, dp),
+  };
+}
+
+// Definisi 13 baris: [label, key, tipe format, isCost]
+// tipe format: "int" | "dec2" | "cbm" | "rupiah"
+const INSIGHT_ROWS = [
+  ["Total Delivery Order (DO)", "do", "int", false],
+  ["Total Drop Point (DP)", "dp", "int", false],
+  ["Total CBM", "cbm", "cbm", false],
+  ["Total Trip", "trip", "int", false],
+  ["Produktivitas DO/Trip", "do_trip", "dec2", false],
+  ["Produktivitas DP/Trip", "dp_trip", "dec2", false],
+  ["Produktivitas DO/DP", "do_dp", "dec2", false],
+  ["Produktivitas CBM/DP", "cbm_dp", "dec2", false],
+  ["Biaya UJP/Trip", "ujp_trip", "rupiah", true],
+  ["Biaya UJP/DO", "ujp_do", "rupiah", true],
+  ["Biaya UJP/DP", "ujp_dp", "rupiah", true],
+  ["Total Biaya UJP", "ujp", "rupiahBig", true],
+  ["Biaya Insentif MPP", "insentif", "rupiahBig", true],
+];
+
+function fmtInsightValue(val, type) {
+  switch (type) {
+    case "int": return numFmt(val);
+    case "dec2": return new Intl.NumberFormat("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val || 0);
+    case "cbm": return new Intl.NumberFormat("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val || 0) + " m\u00B3";
+    case "rupiah": return "Rp " + numFmt(val);
+    case "rupiahBig": return "Rp " + formatCompact(val);
+    default: return String(val);
+  }
+}
+
+function fmtGap(gap, type) {
+  const sign = gap > 0 ? "+" : gap < 0 ? "\u2212" : "";
+  const absVal = Math.abs(gap);
+  let body;
+  switch (type) {
+    case "int": body = numFmt(absVal); break;
+    case "dec2": body = new Intl.NumberFormat("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(absVal); break;
+    case "cbm": body = new Intl.NumberFormat("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(absVal) + " m\u00B3"; break;
+    case "rupiah": body = "Rp " + numFmt(absVal); break;
+    case "rupiahBig": body = "Rp " + formatCompact(absVal); break;
+    default: body = String(absVal);
+  }
+  return sign + body;
+}
+
+function fmtGrowth(active, base) {
+  if (!base) return "\u2013"; // pembagi 0 -> tak terhingga, tampilkan strip
+  const pct = ((active - base) / base) * 100;
+  const sign = pct > 0 ? "+" : pct < 0 ? "\u2212" : "";
+  return sign + Math.abs(pct).toFixed(1) + "%";
+}
+
+// Warna: metrik biasa naik=hijau; metrik biaya (isCost) naik=merah.
+function trendClass(delta, isCost) {
+  if (delta === 0) return "";
+  const good = isCost ? delta < 0 : delta > 0;
+  return good ? "insight-up" : "insight-down";
+}
+
+function renderInsightView() {
+  const periods = getInsightPeriods();
+  const active = insightAggregate(periods.active.from, periods.active.to);
+  const prev = insightAggregate(periods.prev.from, periods.prev.to);
+  const yoy = insightAggregate(periods.yoy.from, periods.yoy.to);
+
+  document.getElementById("insight-table-title").textContent =
+    `Tabel Perbandingan \u2014 ${periods.active.label}`;
+  document.getElementById("insight-range-caption").textContent =
+    `${periods.active.label} vs ${periods.prev.label} (${periods.momLabel}) & ${periods.yoy.label} (YoY)`;
+
+  // Header
+  document.getElementById("insight-table-head").innerHTML = `
+    <th>No</th>
+    <th>Deskripsi</th>
+    <th>${periods.prev.label}</th>
+    <th class="insight-col-active">${periods.active.label}</th>
+    <th>Gap ${periods.momLabel}</th>
+    <th>Growth ${periods.momLabel}</th>
+    <th>${periods.yoy.label}</th>
+    <th>Gap YoY</th>
+    <th>Growth YoY</th>
+  `;
+
+  // Body
+  const body = document.getElementById("insight-table-body");
+  body.innerHTML = INSIGHT_ROWS.map((row, i) => {
+    const [label, key, type, isCost] = row;
+    const aVal = active[key], pVal = prev[key], yVal = yoy[key];
+    const gapMom = aVal - pVal;
+    const gapYoy = aVal - yVal;
+    return `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${label}</td>
+        <td>${fmtInsightValue(pVal, type)}</td>
+        <td class="insight-col-active">${fmtInsightValue(aVal, type)}</td>
+        <td class="${trendClass(gapMom, isCost)}">${fmtGap(gapMom, type)}</td>
+        <td class="${trendClass(gapMom, isCost)}">${fmtGrowth(aVal, pVal)}</td>
+        <td>${fmtInsightValue(yVal, type)}</td>
+        <td class="${trendClass(gapYoy, isCost)}">${fmtGap(gapYoy, type)}</td>
+        <td class="${trendClass(gapYoy, isCost)}">${fmtGrowth(aVal, yVal)}</td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function wireInsightControls() {
+  const apply = () => {
+    const from = document.getElementById("insight-date-from").value;
+    const to = document.getElementById("insight-date-to").value;
+    if (from && to) {
+      insightCustomRange = { from, to };
+      if (isInsightViewActive()) renderInsightView();
+    }
+  };
+  document.getElementById("insight-date-from").addEventListener("change", apply);
+  document.getElementById("insight-date-to").addEventListener("change", apply);
+  document.getElementById("insight-range-reset").addEventListener("click", () => {
+    insightCustomRange = null;
+    document.getElementById("insight-date-from").value = "";
+    document.getElementById("insight-date-to").value = "";
+    if (isInsightViewActive()) renderInsightView();
+  });
+}
+
 // ---------------- INIT ----------------
 
 function initMap() {
@@ -1173,5 +1418,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   buildHubNav();
   wireControls();
   wireDriverTabs();
+  wireInsightControls();
   loadAllData();
 });
