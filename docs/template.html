@@ -234,8 +234,28 @@
 
     <section class="view" id="view-insight" style="display:none">
       <section class="map-panel">
-        <div class="map-title">Insight</div>
-        <div class="map-sub">Segera hadir.</div>
+        <div class="insight-range-bar">
+          <label class="insight-range-label">Filter Range Tanggal:</label>
+          <input type="date" id="insight-date-from" class="input-date">
+          <span class="insight-range-dash">&mdash;</span>
+          <input type="date" id="insight-date-to" class="input-date">
+          <button class="btn btn-ghost" id="insight-range-reset">Reset</button>
+        </div>
+        <div class="insight-range-caption" id="insight-range-caption">--</div>
+      </section>
+
+      <section class="map-panel">
+        <div class="map-title" id="insight-table-title">Tabel Perbandingan</div>
+        <div class="insight-table-wrap">
+          <table class="insight-table">
+            <thead>
+              <tr id="insight-table-head"></tr>
+            </thead>
+            <tbody id="insight-table-body">
+              <tr><td colspan="9" class="driver-table-empty">Memuat&hellip;</td></tr>
+            </tbody>
+          </table>
+        </div>
       </section>
     </section>
 
