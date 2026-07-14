@@ -1265,22 +1265,22 @@ function insightAggregate(fromD, toD) {
   };
 }
 
-// Definisi 13 baris: [label, key, tipe format, isCost]
-// tipe format: "int" | "dec2" | "cbm" | "rupiah"
+// Definisi 13 baris: [label, key, tipe format, isCost, ikon, grup]
+// grup: "volume" | "prod" | "cost" -- nentuin teks badge di panel efisiensi.
 const INSIGHT_ROWS = [
-  ["Total Delivery Order (DO)", "do", "int", false],
-  ["Total Drop Point (DP)", "dp", "int", false],
-  ["Total CBM", "cbm", "cbm", false],
-  ["Total Trip", "trip", "int", false],
-  ["Produktivitas DO/Trip", "do_trip", "dec2", false],
-  ["Produktivitas DP/Trip", "dp_trip", "dec2", false],
-  ["Produktivitas DO/DP", "do_dp", "dec2", false],
-  ["Produktivitas CBM/DP", "cbm_dp", "dec2", false],
-  ["Biaya UJP/Trip", "ujp_trip", "rupiah", true],
-  ["Biaya UJP/DO", "ujp_do", "rupiah", true],
-  ["Biaya UJP/DP", "ujp_dp", "rupiah", true],
-  ["Total Biaya UJP", "ujp", "rupiahBig", true],
-  ["Biaya Insentif MPP", "insentif", "rupiahBig", true],
+  ["Total Delivery Order (DO)", "do", "int", false, "\uD83D\uDCE6", "volume"],
+  ["Total Drop Point (DP)", "dp", "int", false, "\uD83D\uDCCD", "volume"],
+  ["Total CBM", "cbm", "cbm", false, "\uD83D\uDCE6", "volume"],
+  ["Total Trip", "trip", "int", false, "\uD83D\uDE9A", "volume"],
+  ["Produktivitas DO/Trip", "do_trip", "dec2", false, "\uD83D\uDCC8", "prod"],
+  ["Produktivitas DP/Trip", "dp_trip", "dec2", false, "\uD83D\uDCCA", "prod"],
+  ["Produktivitas DO/DP", "do_dp", "dec2", false, "\uD83D\uDCE6", "prod"],
+  ["Produktivitas CBM/DP", "cbm_dp", "dec2", false, "\uD83D\uDCD0", "prod"],
+  ["Biaya UJP/Trip", "ujp_trip", "rupiah", true, "\uD83D\uDCB0", "cost"],
+  ["Biaya UJP/DO", "ujp_do", "rupiah", true, "\u2696\uFE0F", "cost"],
+  ["Biaya UJP/DP", "ujp_dp", "rupiah", true, "\uD83C\uDFAF", "cost"],
+  ["Total Biaya UJP", "ujp", "rupiahBig", true, "\uD83D\uDD22", "cost"],
+  ["Biaya Insentif MPP", "insentif", "rupiahBig", true, "\uD83D\uDCB5", "cost"],
 ];
 
 function fmtInsightValue(val, type) {
@@ -1368,6 +1368,96 @@ function renderInsightView() {
       </tr>
     `;
   }).join("");
+
+  renderEfficiencyPanel("mom", active, prev, periods.momLabel, periods.prev.label, periods.active.label);
+  renderEfficiencyPanel("yoy", active, yoy, "YoY", periods.yoy.label, periods.active.label);
+}
+
+// Badge (teks + warna) per grup metrik untuk panel efisiensi.
+// - volume: naik="NAIK" hijau, turun="TURUN" merah
+// - prod:   naik="MEMBAIK" hijau, turun="MENURUN" merah
+// - cost:   naik="NAIK" MERAH (jelek), turun="TURUN" hijau (bagus)  [opsi A]
+function insightBadge(delta, grup) {
+  if (delta === 0) return { text: "TETAP", cls: "" };
+  const up = delta > 0;
+  if (grup === "cost") {
+    return up ? { text: "NAIK", cls: "insight-badge-bad" } : { text: "TURUN", cls: "insight-badge-good" };
+  }
+  if (grup === "prod") {
+    return up ? { text: "MEMBAIK", cls: "insight-badge-good" } : { text: "MENURUN", cls: "insight-badge-bad" };
+  }
+  // volume
+  return up ? { text: "NAIK", cls: "insight-badge-good" } : { text: "TURUN", cls: "insight-badge-bad" };
+}
+
+function renderEfficiencyPanel(which, active, base, label, baseLabel, activeLabel) {
+  document.getElementById(`insight-eff-${which}-sub`).textContent =
+    `${baseLabel} vs ${activeLabel} (${label})`;
+  if (which === "mom") {
+    document.getElementById("insight-eff-mom-title").textContent = `Perbandingan Efisiensi ${label}`;
+  }
+
+  const list = document.getElementById(`insight-eff-${which}-list`);
+  list.innerHTML = INSIGHT_ROWS.map((row) => {
+    const [name, key, , isCost, icon, grup] = row;
+    const delta = active[key] - base[key];
+    const badge = insightBadge(delta, grup);
+    // Warna angka growth: ikut penilaian bagus/jelek (bukan arah mentah).
+    const good = badge.cls === "insight-badge-good";
+    const growthCls = delta === 0 ? "" : (good ? "insight-up" : "insight-down");
+    const arrow = delta > 0 ? "\u25B2" : delta < 0 ? "\u25BC" : "";
+    return `
+      <div class="insight-eff-item">
+        <div class="insight-eff-icon">${icon}</div>
+        <div class="insight-eff-name">${name}</div>
+        <div class="insight-eff-growth ${growthCls}">
+          <span class="insight-eff-arrow">${arrow}</span>
+          <span>${fmtGrowth(active[key], base[key])}</span>
+        </div>
+        <span class="insight-badge ${badge.cls}">${badge.text}</span>
+      </div>
+    `;
+  }).join("");
+
+  renderConclusion(which, active, base, label);
+}
+
+// Kotak kesimpulan otomatis berbasis aturan sederhana (bukan AI).
+function renderConclusion(which, active, base, label) {
+  const box = document.getElementById(`insight-eff-${which}-conclusion`);
+  const g = (key) => (base[key] ? ((active[key] - base[key]) / base[key]) * 100 : 0);
+
+  const doG = g("do"), dpG = g("dp"), dpTripG = g("dp_trip"), ujpG = g("ujp"), insG = g("insentif");
+  const costUp = ujpG > 0 || insG > 0;
+
+  const lines = [];
+  // Demand
+  const demandUp = doG > 0 && dpG > 0;
+  lines.push({
+    cls: demandUp ? "up" : "down",
+    html: `\uD83D\uDCE6 Demand: DO ${fmtPct(doG)} &amp; DP ${fmtPct(dpG)} (${demandUp ? "\u2191 demand naik" : "demand turun"})`,
+  });
+  // Kepadatan armada
+  lines.push({
+    cls: dpTripG >= 0 ? "up" : "down",
+    html: `\uD83D\uDCCA DP/Trip ${fmtPct(dpTripG)} \u2014 ${dpTripG >= 0 ? "armada makin padat" : "kepadatan armada turun"}`,
+  });
+  // Biaya
+  lines.push({
+    cls: costUp ? "down" : "up",
+    html: `\uD83D\uDCB0 Biaya UJP ${fmtPct(ujpG)} &amp; Insentif ${fmtPct(insG)} \u2014 ${costUp ? "cost meningkat" : "cost terkendali"}`,
+  });
+
+  const warn = costUp;
+  box.className = "insight-conclusion " + (warn ? "warn" : "ok");
+  box.innerHTML =
+    `<div class="insight-conclusion-title">${warn ? "\u26A0\uFE0F KESIMPULAN: Perlu Evaluasi" : "\u2705 KESIMPULAN: Sehat"}</div>` +
+    lines.map((l) => `<span class="insight-conclusion-line ${l.cls}">${l.html}</span>`).join("");
+}
+
+function fmtPct(pct) {
+  const sign = pct > 0 ? "+" : pct < 0 ? "\u2212" : "";
+  return sign + Math.abs(pct).toFixed(1) + "%";
 }
 
 function wireInsightControls() {
