@@ -678,6 +678,7 @@ function renderMppView() {
   renderRecurringHighBanner();
   renderDriverTable();
   renderJalurTable();
+  renderHighDemandJalur();
 }
 
 // Plugin custom Chart.js: gambar angka total (jumlah semua kategori)
@@ -1801,6 +1802,154 @@ function wireJalurControls() {
     jalurMetric = e.target.value;
     renderJalurTable();
   });
+}
+
+// ---------------- ROTASI MPP -- JALUR HIGH DEMAND ----------------
+
+let selectedHighDemandJalur = null; // { area, hubKey }
+
+// Ranking SEMUA jalur (per Area+Hub, konsisten sama Ranking Jalur di atas)
+// berdasarkan Insentif -- FIXED selalu Insentif, nggak ngikutin dropdown
+// metrik tabel Ranking Jalur.
+function computeJalurInsentifRanking() {
+  const columns = getJalurColumns();
+  const groups = buildJalurGroups();
+  return Object.values(groups).map((g) => {
+    const hub = HUBS.find((h) => h.key === g.hubKey);
+    let total = 0;
+    columns.forEach((col) => {
+      total += col.type === "custom"
+        ? jalurCustomRangeValue(g.hubKey, g.area, col.from, col.to, "insentif")
+        : jalurMetricValue(g.byMonth[col.key], "insentif");
+    });
+    return { area: g.area, hubKey: g.hubKey, siteLabel: hub ? hub.label : g.hubKey, total };
+  }).sort((a, b) => b.total - a.total);
+}
+
+function renderHighDemandJalur() {
+  const ranking = computeJalurInsentifRanking();
+  const top5 = ranking.slice(0, 5);
+  const grandTotal = ranking.reduce((a, r) => a + r.total, 0);
+  const top5Total = top5.reduce((a, r) => a + r.total, 0);
+  const pct = grandTotal ? (top5Total / grandTotal) * 100 : 0;
+
+  document.getElementById("hd-progress-fill").style.width = Math.min(100, pct) + "%";
+  document.getElementById("hd-progress-value").textContent = pct.toFixed(0) + "% insentif";
+
+  // default: pilih jalur #1, atau reset kalau pilihan lama udah nggak ada di top5 baru (mis. abis ganti filter)
+  if (!selectedHighDemandJalur || !top5.some((t) => t.area === selectedHighDemandJalur.area && t.hubKey === selectedHighDemandJalur.hubKey)) {
+    selectedHighDemandJalur = top5[0] ? { area: top5[0].area, hubKey: top5[0].hubKey } : null;
+  }
+
+  const medals = ["\uD83E\uDD47", "\uD83E\uDD48", "\uD83E\uDD49"];
+  const tabsEl = document.getElementById("hd-jalur-tabs");
+  tabsEl.innerHTML = top5.map((t, i) => {
+    const active = selectedHighDemandJalur && t.area === selectedHighDemandJalur.area && t.hubKey === selectedHighDemandJalur.hubKey;
+    const prefix = medals[i] || `${i + 1}.`;
+    return `<button class="hd-tab${active ? " active" : ""}" data-area="${escapeHtml(t.area)}" data-hub="${t.hubKey}">${prefix} ${escapeHtml(t.area.toUpperCase())}</button>`;
+  }).join("");
+  tabsEl.querySelectorAll(".hd-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      selectedHighDemandJalur = { area: btn.dataset.area, hubKey: btn.dataset.hub };
+      renderHighDemandJalur();
+    });
+  });
+
+  const monthLabel = document.getElementById("month-select").selectedOptions[0]?.textContent || "";
+  document.getElementById("hd-caption").textContent = `Top 5 \u00B7 Insentif \u00B7 ${monthLabel}`;
+
+  renderHighDemandTable();
+}
+
+function renderHighDemandTable() {
+  const body = document.getElementById("hd-table-body");
+  const titleEl = document.getElementById("hd-table-title");
+
+  if (!selectedHighDemandJalur) {
+    titleEl.textContent = "";
+    body.innerHTML = `<tr><td colspan="10" class="driver-table-empty">Tidak ada data.</td></tr>`;
+    return;
+  }
+
+  const { area, hubKey } = selectedHighDemandJalur;
+  const allRows = getFilteredRows(hubKey); // hormati filter site+periode topbar
+  const jalurRows = allRows.filter((r) => ((r["Area"] || "").toString().trim() || "(Tanpa Jalur)") === area);
+
+  // Agregasi per-orang KHUSUS di jalur ini.
+  const jalurAgg = {};
+  jalurRows.forEach((r) => {
+    const val = toNumber(r["Insentif Ref"]);
+    const dNik = cleanNik(r["NIK1"]);
+    if (dNik) {
+      if (!jalurAgg[dNik]) jalurAgg[dNik] = { trip: 0, insentif: 0, roleCount: { driver: 0, kenek: 0 }, name: { driver: "", kenek: "" } };
+      jalurAgg[dNik].trip++;
+      jalurAgg[dNik].insentif += val;
+      jalurAgg[dNik].roleCount.driver++;
+      if (!jalurAgg[dNik].name.driver) jalurAgg[dNik].name.driver = (r["driver"] || "").toString().trim();
+    }
+    const kNik = cleanNik(r["nik2"]);
+    if (kNik) {
+      if (!jalurAgg[kNik]) jalurAgg[kNik] = { trip: 0, insentif: 0, roleCount: { driver: 0, kenek: 0 }, name: { driver: "", kenek: "" } };
+      jalurAgg[kNik].trip++;
+      jalurAgg[kNik].insentif += val;
+      jalurAgg[kNik].roleCount.kenek++;
+      if (!jalurAgg[kNik].name.kenek) jalurAgg[kNik].name.kenek = (r["kenek1"] || "").toString().trim();
+    }
+  });
+
+  // Total Ins Jalur = SUM mentah Insentif Ref dari baris jalur ini (1x per
+  // baris) -- HARUS sama dengan angka "Total" di ranking Top 5 di atas.
+  // (Kalau dijumlah dari agregasi per-orang, nilainya bakal 2x lipat,
+  // karena tiap baris trip nyumbang insentif ke driver DAN kenek sekaligus.)
+  const totalInsJalur = jalurRows.reduce((a, r) => a + toNumber(r["Insentif Ref"]), 0);
+
+  // Total trip SEMUA jalur per orang (dalam hub+periode yang sama) --
+  // dipakai buat % Kont Jalur.
+  const totalTripAllJalur = {};
+  allRows.forEach((r) => {
+    const dNik = cleanNik(r["NIK1"]);
+    if (dNik) totalTripAllJalur[dNik] = (totalTripAllJalur[dNik] || 0) + 1;
+    const kNik = cleanNik(r["nik2"]);
+    if (kNik) totalTripAllJalur[kNik] = (totalTripAllJalur[kNik] || 0) + 1;
+  });
+
+  const hub = HUBS.find((h) => h.key === hubKey);
+  const rows = Object.entries(jalurAgg).map(([nik, g]) => {
+    const role = g.roleCount.kenek > g.roleCount.driver ? "kenek" : "driver";
+    const name = g.name[role] || g.name.driver || g.name.kenek || "-";
+    const totalTrip = totalTripAllJalur[nik] || g.trip;
+    const pctKont = totalTrip ? (g.trip / totalTrip) * 100 : 0;
+    const pctIns = totalInsJalur ? (g.insentif / totalInsJalur) * 100 : 0;
+    return {
+      name, role, siteLabel: hub ? hub.label : hubKey,
+      totalTrip, tripJalur: g.trip, pctKont, totalInsJalur, insJalur: g.insentif, pctIns,
+    };
+  });
+
+  // Selalu diurutkan dari % Ins of Jalur tertinggi (tidak ada opsi sort lain).
+  rows.sort((a, b) => b.pctIns - a.pctIns);
+
+  titleEl.textContent = `Rincian MPP di Jalur: ${area} (Hub ${hub ? hub.label : hubKey})`;
+
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="10" class="driver-table-empty">Tidak ada data untuk jalur ini.</td></tr>`;
+    return;
+  }
+
+  body.innerHTML = rows.map((r, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td class="driver-name">${escapeHtml(r.name)}</td>
+      <td><span class="driver-pill driver-pill-role-${r.role}">${r.role === "driver" ? "Driver" : "Kenek"}</span></td>
+      <td>Hub ${escapeHtml(r.siteLabel)}</td>
+      <td>${numFmt(r.totalTrip)} trip</td>
+      <td>${numFmt(r.tripJalur)} trip</td>
+      <td>${r.pctKont.toFixed(0)}%</td>
+      <td>${rupiahFull(r.totalInsJalur)}</td>
+      <td>${rupiahFull(r.insJalur)}</td>
+      <td>${r.pctIns.toFixed(0)}%</td>
+    </tr>
+  `).join("");
 }
 
 // ---------------- INIT ----------------
