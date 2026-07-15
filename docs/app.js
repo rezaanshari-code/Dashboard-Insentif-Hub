@@ -1875,10 +1875,12 @@ function renderHighDemandTable() {
   const allRows = getFilteredRows(hubKey); // hormati filter site+periode topbar
   const jalurRows = allRows.filter((r) => ((r["Area"] || "").toString().trim() || "(Tanpa Jalur)") === area);
 
-  // Agregasi per-orang KHUSUS di jalur ini.
+  // Agregasi per-orang KHUSUS di jalur ini. PAKAI "Insentif per MPP" (bukan
+  // "Insentif Ref") biar konsisten & bisa dibandingin langsung sama kolom
+  // "Total YTD" di tabel Daftar Driver MPP (yang juga basisnya kolom ini).
   const jalurAgg = {};
   jalurRows.forEach((r) => {
-    const val = toNumber(r["Insentif Ref"]);
+    const val = toNumber(r[MPP_FIELD]);
     const dNik = cleanNik(r["NIK1"]);
     if (dNik) {
       if (!jalurAgg[dNik]) jalurAgg[dNik] = { trip: 0, insentif: 0, roleCount: { driver: 0, kenek: 0 }, name: { driver: "", kenek: "" } };
@@ -1897,11 +1899,12 @@ function renderHighDemandTable() {
     }
   });
 
-  // Total Ins Jalur = SUM mentah Insentif Ref dari baris jalur ini (1x per
-  // baris) -- HARUS sama dengan angka "Total" di ranking Top 5 di atas.
+  // Total Ins Jalur = SUM mentah "Insentif per MPP" dari baris jalur ini
+  // (1x per baris, BUKAN Insentif Ref -- sengaja beda dari "Total" di
+  // ranking Top 5 di atas, karena kolom ini mau konsisten sama Total YTD).
   // (Kalau dijumlah dari agregasi per-orang, nilainya bakal 2x lipat,
   // karena tiap baris trip nyumbang insentif ke driver DAN kenek sekaligus.)
-  const totalInsJalur = jalurRows.reduce((a, r) => a + toNumber(r["Insentif Ref"]), 0);
+  const totalInsJalur = jalurRows.reduce((a, r) => a + toNumber(r[MPP_FIELD]), 0);
 
   // Total trip SEMUA jalur per orang (dalam hub+periode yang sama) --
   // dipakai buat % Kont Jalur.
