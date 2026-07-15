@@ -260,6 +260,47 @@
           </table>
         </div>
       </section>
+
+      <section class="map-panel">
+        <div class="map-panel-header">
+          <div>
+            <div class="map-title">Rotasi MPP &mdash; Jalur High Demand</div>
+            <div class="map-sub" id="hd-caption">--</div>
+          </div>
+        </div>
+
+        <div class="hd-progress-row">
+          <span class="hd-progress-label-left">% Insentif Top 5 Jalur vs Total</span>
+          <div class="hd-progress-track"><div class="hd-progress-fill" id="hd-progress-fill"></div></div>
+          <span class="hd-progress-value" id="hd-progress-value">--</span>
+        </div>
+
+        <div class="hd-tab-row" id="hd-jalur-tabs"></div>
+
+        <div class="map-sub" id="hd-table-title" style="padding:0 20px 8px;font-weight:700;color:var(--text)"></div>
+
+        <div class="driver-table-wrap">
+          <table class="driver-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Nama</th>
+                <th>Role</th>
+                <th>Site Hub</th>
+                <th>Total Trip</th>
+                <th>Trip ke Jalur</th>
+                <th>% Kont Jalur</th>
+                <th>Total Ins Jalur</th>
+                <th>Ins MPP di Jalur</th>
+                <th>% Ins of Jalur</th>
+              </tr>
+            </thead>
+            <tbody id="hd-table-body">
+              <tr><td colspan="10" class="driver-table-empty">Memuat&hellip;</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </section>
 
     <section class="view" id="view-insight" style="display:none">
