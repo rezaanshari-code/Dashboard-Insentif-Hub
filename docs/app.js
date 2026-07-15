@@ -529,7 +529,7 @@ function wireControls() {
 
 // ---------------- VIEW SWITCHING (sidebar Menu) ----------------
 
-const VIEW_TITLES = { overview: "Overview", mpp: "Distribusi MPP", insight: "Insight" };
+const VIEW_TITLES = { overview: "Overview", mpp: "Distribusi MPP dan Jalur", insight: "Insight" };
 
 function switchView(view, btnEl) {
   document.querySelectorAll(".nav-item[data-view]").forEach((b) => b.classList.remove("active"));
@@ -677,6 +677,7 @@ function renderMppView() {
   renderMppDriverStats(filteredValues, siteLabel, monthLabel);
   renderRecurringHighBanner();
   renderDriverTable();
+  renderJalurTable();
 }
 
 // Plugin custom Chart.js: gambar angka total (jumlah semua kategori)
@@ -1600,6 +1601,208 @@ function wireInsightControls() {
   });
 }
 
+// ---------------- RANKING JALUR ----------------
+
+let jalurMetric = "insentif";
+let jalurSortDir = "desc"; // "asc" | "desc" -- cuma kolom Total yang sortable
+
+// Tentukan kolom bulan yang ditampilkan, mengikuti filter Tahun+Bulan/Q/H
+// yang sama persis dengan topbar (bukan filter terpisah).
+function getJalurColumns() {
+  if (PERIOD_RANGES[currentMonth]) {
+    const [sM, eM] = PERIOD_RANGES[currentMonth];
+    const cols = [];
+    for (let m = sM; m <= eM; m++) {
+      cols.push({ key: `${currentYear}-${String(m).padStart(2, "0")}`, label: MONTH_NAMES_ID[m - 1], type: "month" });
+    }
+    return cols;
+  }
+  if (currentMonth === "all") {
+    const monthSet = new Set();
+    activeHubKeys().forEach((k) => (RAW[k] || []).forEach((r) => {
+      const d = parseTanggal(r["Tanggal"]);
+      if (d && String(d.getFullYear()) === String(currentYear)) monthSet.add(monthKey(d));
+    }));
+    return Array.from(monthSet).sort().map((mk) => ({
+      key: mk, label: MONTH_NAMES_ID[parseInt(mk.split("-")[1], 10) - 1], type: "month",
+    }));
+  }
+  if (String(currentMonth).startsWith("custom:")) {
+    const [, from, to] = currentMonth.split(":");
+    return [{ key: "custom", label: fmtRangeLabel(parseISODateLocal(from), parseISODateLocal(to)), type: "custom", from, to }];
+  }
+  // Bulan spesifik "YYYY-MM"
+  const m = parseInt(String(currentMonth).split("-")[1], 10);
+  return [{ key: currentMonth, label: `${MONTH_NAMES_ID[m - 1]} ${currentYear}`, type: "month" }];
+}
+
+// Kumpulkan semua baris data, dikelompokkan per (Jalur/Area, Site/Hub, Bulan).
+function buildJalurGroups() {
+  const keys = activeHubKeys();
+  const groups = {}; // "area|hubKey" -> { area, hubKey, byMonth: {"YYYY-MM": rows[]} }
+  keys.forEach((hubKey) => {
+    (RAW[hubKey] || []).forEach((r) => {
+      const d = parseTanggal(r["Tanggal"]);
+      if (!d) return;
+      const mk = monthKey(d);
+      const area = (r["Area"] || "").toString().trim() || "(Tanpa Jalur)";
+      const gk = area + "|" + hubKey;
+      if (!groups[gk]) groups[gk] = { area, hubKey, byMonth: {} };
+      if (!groups[gk].byMonth[mk]) groups[gk].byMonth[mk] = [];
+      groups[gk].byMonth[mk].push(r);
+    });
+  });
+  return groups;
+}
+
+function jalurMetricValue(rows, metric) {
+  if (!rows || !rows.length) return 0;
+  let doTotal = 0, dp = 0, ujp = 0, ins = 0;
+  rows.forEach((r) => {
+    doTotal += toNumber(r["Jumlah_do"]);
+    dp += toNumber(r["jumlah_titik"]);
+    ujp += toNumber(r["UJP"]);
+    ins += toNumber(r["Insentif Ref"]);
+  });
+  const trip = rows.length;
+  switch (metric) {
+    case "insentif": return ins;
+    case "ujp": return ujp;
+    case "trip": return trip;
+    case "do": return doTotal;
+    case "dp": return dp;
+    case "do_trip": return trip ? doTotal / trip : 0;
+    case "dp_trip": return trip ? dp / trip : 0;
+    default: return 0;
+  }
+}
+
+// Nilai metrik untuk 1 kolom "custom" (rentang tanggal), difilter per hub+area.
+function jalurCustomRangeValue(hubKey, area, fromStr, toStr, metric) {
+  const fromD = parseISODateLocal(fromStr), toD = parseISODateLocal(toStr);
+  const rows = (RAW[hubKey] || []).filter((r) => {
+    if (((r["Area"] || "").toString().trim() || "(Tanpa Jalur)") !== area) return false;
+    const d = parseTanggal(r["Tanggal"]);
+    return d && d >= fromD && d <= toD;
+  });
+  return jalurMetricValue(rows, metric);
+}
+
+function getPrevMonthKey(mk) {
+  const [y, m] = mk.split("-").map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+}
+
+function fmtJalurValue(val, metric) {
+  if (!val) return null; // 0/undefined -> ditampilkan "--"
+  if (metric === "insentif" || metric === "ujp") return "Rp " + numFmt(val);
+  if (metric === "do_trip" || metric === "dp_trip") {
+    return new Intl.NumberFormat("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val);
+  }
+  return numFmt(val);
+}
+
+function renderJalurTable() {
+  const columns = getJalurColumns();
+  const groups = buildJalurGroups();
+  const metric = jalurMetric;
+
+  // Hitung value + growth per grup per kolom, plus Total.
+  const rows = Object.values(groups).map((g) => {
+    const hub = HUBS.find((h) => h.key === g.hubKey);
+    const cellValues = columns.map((col) => {
+      let val;
+      if (col.type === "custom") {
+        val = jalurCustomRangeValue(g.hubKey, g.area, col.from, col.to, metric);
+      } else {
+        val = jalurMetricValue(g.byMonth[col.key], metric);
+        const prevMk = getPrevMonthKey(col.key);
+        const prevRows = (RAW[g.hubKey] || []).filter((r) => {
+          if (((r["Area"] || "").toString().trim() || "(Tanpa Jalur)") !== g.area) return false;
+          const d = parseTanggal(r["Tanggal"]);
+          return d && monthKey(d) === prevMk;
+        });
+        const prevVal = jalurMetricValue(prevRows, metric);
+        const growth = prevVal > 0 ? ((val - prevVal) / prevVal) * 100 : null;
+        return { val, growth };
+      }
+      return { val, growth: null };
+    });
+    const total = cellValues.reduce((a, c) => a + (c.val || 0), 0);
+    return { area: g.area, siteLabel: hub ? hub.label : g.hubKey, cellValues, total };
+  });
+
+  // Urutan medali (Top 3) SELALU berdasarkan Total tertinggi, terlepas
+  // dari arah sort yang lagi aktif di tabel.
+  const rankOrder = [...rows].sort((a, b) => b.total - a.total);
+  const medalByArea = {};
+  rankOrder.slice(0, 3).forEach((r, i) => { medalByArea[r.area + "|" + r.siteLabel] = ["\uD83E\uDD47", "\uD83E\uDD48", "\uD83E\uDD49"][i]; });
+
+  rows.sort((a, b) => (jalurSortDir === "desc" ? b.total - a.total : a.total - b.total));
+
+  // Caption
+  const siteLabel = currentSite === "all" ? "Semua Site" : "Hub " + (HUBS.find((h) => h.key === currentSite)?.label || "");
+  const metricLabel = document.getElementById("jalur-metric-select").selectedOptions[0]?.textContent || "";
+  const monthRangeLabel = columns.length > 1
+    ? `${columns[0].label}\u2013${columns[columns.length - 1].label}`
+    : (columns[0]?.label || "-");
+  document.getElementById("jalur-caption").textContent =
+    `${rows.length} jalur \u00B7 ${metricLabel} \u00B7 ${HUBS.length} site \u00B7 ${monthRangeLabel}`;
+
+  // Header
+  const arrow = jalurSortDir === "desc" ? "\u2193" : "\u2191";
+  const head = document.getElementById("jalur-table-head");
+  head.innerHTML = `
+    <th>#</th>
+    <th>Jalur</th>
+    <th>Site Hub</th>
+    ${columns.map((c) => `<th>${c.label}</th>`).join("")}
+    <th class="jalur-sortable" id="jalur-total-header">Total <span class="jalur-sort-arrow">${arrow}</span></th>
+  `;
+  document.getElementById("jalur-total-header").addEventListener("click", () => {
+    jalurSortDir = jalurSortDir === "desc" ? "asc" : "desc";
+    renderJalurTable();
+  });
+
+  // Body
+  const body = document.getElementById("jalur-table-body");
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="${3 + columns.length + 1}" class="driver-table-empty">Tidak ada data.</td></tr>`;
+    return;
+  }
+  body.innerHTML = rows.map((r, i) => {
+    const medal = medalByArea[r.area + "|" + r.siteLabel];
+    const rankCell = medal ? `<span class="jalur-rank-medal">${medal}</span>` : (i + 1);
+    const cellsHtml = r.cellValues.map((c) => {
+      const formatted = fmtJalurValue(c.val, metric);
+      if (formatted === null) return `<td class="jalur-empty-cell">\u2014</td>`;
+      let growthHtml = "";
+      if (c.growth !== null && isFinite(c.growth)) {
+        const cls = c.growth >= 0 ? "up" : "down";
+        const sign = c.growth >= 0 ? "\u2191" : "\u2193";
+        growthHtml = `<span class="jalur-growth ${cls}">${sign}${Math.abs(c.growth).toFixed(0)}%</span>`;
+      }
+      return `<td>${formatted}${growthHtml}</td>`;
+    }).join("");
+    return `
+      <tr>
+        <td>${rankCell}</td>
+        <td class="jalur-name">${escapeHtml(r.area)}</td>
+        <td><span class="jalur-site-pill">Hub ${escapeHtml(r.siteLabel)}</span></td>
+        ${cellsHtml}
+        <td class="jalur-total">${fmtJalurValue(r.total, metric) ?? "\u2014"}</td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function wireJalurControls() {
+  document.getElementById("jalur-metric-select").addEventListener("change", (e) => {
+    jalurMetric = e.target.value;
+    renderJalurTable();
+  });
+}
+
 // ---------------- INIT ----------------
 
 function initMap() {
@@ -1630,5 +1833,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   wireControls();
   wireDriverTabs();
   wireInsightControls();
+  wireJalurControls();
   loadAllData();
 });
