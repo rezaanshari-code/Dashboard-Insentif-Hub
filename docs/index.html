@@ -7,9 +7,9 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=202607140358032015390000">
+<link rel="stylesheet" href="style.css?v=202607150219003088950000">
 <!-- index.html ini di-generate otomatis dari template.html oleh scripts/fetch_sheets.py. JANGAN edit index.html langsung — perubahan akan ketimpa run berikutnya. Edit template.html. -->
-<!-- build: 2026-07-14T03:58:03.201539+00:00 -->
+<!-- build: 2026-07-15T02:19:00.308895+00:00 -->
 </head>
 <body>
 
@@ -36,7 +36,7 @@
         <span class="dot dot-blue"></span> Overview
       </button>
       <button class="nav-item" data-view="mpp">
-        <span class="dot dot-red"></span> Distribusi MPP
+        <span class="dot dot-red"></span> Distribusi MPP dan Jalur
       </button>
       <button class="nav-item" data-view="insight">
         <span class="dot dot-amber"></span> Insight
@@ -230,6 +230,36 @@
           <div class="driver-pagination-pages" id="driver-pagination-pages"></div>
         </div>
       </section>
+
+      <section class="map-panel">
+        <div class="map-panel-header">
+          <div>
+            <div class="map-title">Ranking Jalur &mdash; Insentif Terbanyak</div>
+            <div class="map-sub" id="jalur-caption">--</div>
+          </div>
+          <div class="jalur-metric-wrap">
+            <select id="jalur-metric-select" class="input-select">
+              <option value="insentif">Insentif</option>
+              <option value="ujp">UJP</option>
+              <option value="trip">Trip</option>
+              <option value="do">DO</option>
+              <option value="dp">DP</option>
+              <option value="do_trip">DO/Trip</option>
+              <option value="dp_trip">DP/Trip</option>
+            </select>
+          </div>
+        </div>
+        <div class="jalur-table-wrap">
+          <table class="jalur-table">
+            <thead>
+              <tr id="jalur-table-head"></tr>
+            </thead>
+            <tbody id="jalur-table-body">
+              <tr><td class="driver-table-empty">Memuat&hellip;</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </section>
 
     <section class="view" id="view-insight" style="display:none">
@@ -291,6 +321,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="app.js?v=202607140358032015390000"></script>
+<script src="app.js?v=202607150219003088950000"></script>
 </body>
 </html>
