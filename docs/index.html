@@ -7,9 +7,9 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=202607150219003088950000">
+<link rel="stylesheet" href="style.css?v=202607150306264491190000">
 <!-- index.html ini di-generate otomatis dari template.html oleh scripts/fetch_sheets.py. JANGAN edit index.html langsung — perubahan akan ketimpa run berikutnya. Edit template.html. -->
-<!-- build: 2026-07-15T02:19:00.308895+00:00 -->
+<!-- build: 2026-07-15T03:06:26.449119+00:00 -->
 </head>
 <body>
 
@@ -260,6 +260,47 @@
           </table>
         </div>
       </section>
+
+      <section class="map-panel">
+        <div class="map-panel-header">
+          <div>
+            <div class="map-title">Rotasi MPP &mdash; Jalur High Demand</div>
+            <div class="map-sub" id="hd-caption">--</div>
+          </div>
+        </div>
+
+        <div class="hd-progress-row">
+          <span class="hd-progress-label-left">% Insentif Top 5 Jalur vs Total</span>
+          <div class="hd-progress-track"><div class="hd-progress-fill" id="hd-progress-fill"></div></div>
+          <span class="hd-progress-value" id="hd-progress-value">--</span>
+        </div>
+
+        <div class="hd-tab-row" id="hd-jalur-tabs"></div>
+
+        <div class="map-sub" id="hd-table-title" style="padding:0 20px 8px;font-weight:700;color:var(--text)"></div>
+
+        <div class="driver-table-wrap">
+          <table class="driver-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Nama</th>
+                <th>Role</th>
+                <th>Site Hub</th>
+                <th>Total Trip</th>
+                <th>Trip ke Jalur</th>
+                <th>% Kont Jalur</th>
+                <th>Total Ins Jalur</th>
+                <th>Ins MPP di Jalur</th>
+                <th>% Ins of Jalur</th>
+              </tr>
+            </thead>
+            <tbody id="hd-table-body">
+              <tr><td colspan="10" class="driver-table-empty">Memuat&hellip;</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </section>
 
     <section class="view" id="view-insight" style="display:none">
@@ -321,6 +362,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="app.js?v=202607150219003088950000"></script>
+<script src="app.js?v=202607150306264491190000"></script>
 </body>
 </html>
