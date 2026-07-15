@@ -1899,12 +1899,14 @@ function renderHighDemandTable() {
     }
   });
 
-  // Total Ins Jalur = SUM mentah "Insentif per MPP" dari baris jalur ini
-  // (1x per baris, BUKAN Insentif Ref -- sengaja beda dari "Total" di
-  // ranking Top 5 di atas, karena kolom ini mau konsisten sama Total YTD).
+  // Total Ins Jalur = SUM mentah "Insentif Ref" dari baris jalur ini (1x
+  // per baris) -- ini TOTAL RESMI insentif yang keluar dari jalur itu,
+  // SENGAJA beda basis dari "Ins MPP di Jalur" (per-orang, pakai kolom
+  // "Insentif per MPP"). Konsisten sama angka "Total" di ranking Top 5
+  // di atas (yang juga pakai Insentif Ref).
   // (Kalau dijumlah dari agregasi per-orang, nilainya bakal 2x lipat,
   // karena tiap baris trip nyumbang insentif ke driver DAN kenek sekaligus.)
-  const totalInsJalur = jalurRows.reduce((a, r) => a + toNumber(r[MPP_FIELD]), 0);
+  const totalInsJalur = jalurRows.reduce((a, r) => a + toNumber(r["Insentif Ref"]), 0);
 
   // Total trip SEMUA jalur per orang (dalam hub+periode yang sama) --
   // dipakai buat % Kont Jalur.
