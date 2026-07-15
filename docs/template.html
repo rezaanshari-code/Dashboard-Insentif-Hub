@@ -36,7 +36,7 @@
         <span class="dot dot-blue"></span> Overview
       </button>
       <button class="nav-item" data-view="mpp">
-        <span class="dot dot-red"></span> Distribusi MPP
+        <span class="dot dot-red"></span> Distribusi MPP dan Jalur
       </button>
       <button class="nav-item" data-view="insight">
         <span class="dot dot-amber"></span> Insight
@@ -228,6 +228,36 @@
         <div class="driver-pagination" id="driver-pagination">
           <div class="driver-pagination-info" id="driver-pagination-info"></div>
           <div class="driver-pagination-pages" id="driver-pagination-pages"></div>
+        </div>
+      </section>
+
+      <section class="map-panel">
+        <div class="map-panel-header">
+          <div>
+            <div class="map-title">Ranking Jalur &mdash; Insentif Terbanyak</div>
+            <div class="map-sub" id="jalur-caption">--</div>
+          </div>
+          <div class="jalur-metric-wrap">
+            <select id="jalur-metric-select" class="input-select">
+              <option value="insentif">Insentif</option>
+              <option value="ujp">UJP</option>
+              <option value="trip">Trip</option>
+              <option value="do">DO</option>
+              <option value="dp">DP</option>
+              <option value="do_trip">DO/Trip</option>
+              <option value="dp_trip">DP/Trip</option>
+            </select>
+          </div>
+        </div>
+        <div class="jalur-table-wrap">
+          <table class="jalur-table">
+            <thead>
+              <tr id="jalur-table-head"></tr>
+            </thead>
+            <tbody id="jalur-table-body">
+              <tr><td class="driver-table-empty">Memuat&hellip;</td></tr>
+            </tbody>
+          </table>
         </div>
       </section>
     </section>
