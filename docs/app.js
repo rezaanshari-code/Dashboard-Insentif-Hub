@@ -1707,6 +1707,19 @@ function renderJalurTable() {
   const columns = getJalurColumns();
   const groups = buildJalurGroups();
   const metric = jalurMetric;
+  const maxDataDate = getMaxDataDate(); // buat deteksi kolom bulan yang "belum penuh"
+
+  // Kalau kolom bulan ini adalah bulan yang lagi berjalan (belum penuh
+  // sekalender), return tanggal terakhir yang ada datanya (buat capping
+  // bulan pembanding). Kalau bulan ini udah lewat penuh, return null
+  // (artinya: bandingkan ke bulan sebelumnya SECARA PENUH, TIDAK di-cap).
+  function cappedDayForColumn(colKey) {
+    if (!maxDataDate) return null;
+    const [y, m] = colKey.split("-").map(Number);
+    if (maxDataDate.getFullYear() !== y || maxDataDate.getMonth() + 1 !== m) return null;
+    const lastDay = new Date(y, m, 0).getDate();
+    return maxDataDate.getDate() < lastDay ? maxDataDate.getDate() : null;
+  }
 
   // Hitung value + growth per grup per kolom, plus Total.
   const rows = Object.values(groups).map((g) => {
@@ -1718,10 +1731,16 @@ function renderJalurTable() {
       } else {
         val = jalurMetricValue(g.byMonth[col.key], metric);
         const prevMk = getPrevMonthKey(col.key);
+        const cappedDay = cappedDayForColumn(col.key);
         const prevRows = (RAW[g.hubKey] || []).filter((r) => {
           if (((r["Area"] || "").toString().trim() || "(Tanpa Jalur)") !== g.area) return false;
           const d = parseTanggal(r["Tanggal"]);
-          return d && monthKey(d) === prevMk;
+          if (!d || monthKey(d) !== prevMk) return false;
+          // Kalau bulan aktif belum penuh (mis. Juli baru sampai tgl 15),
+          // bulan pembanding (Juni) juga cuma diambil sampai tgl 15 --
+          // apple-to-apple, bukan bulan penuh vs bulan setengah.
+          if (cappedDay !== null && d.getDate() > cappedDay) return false;
+          return true;
         });
         const prevVal = jalurMetricValue(prevRows, metric);
         const growth = prevVal > 0 ? ((val - prevVal) / prevVal) * 100 : null;
