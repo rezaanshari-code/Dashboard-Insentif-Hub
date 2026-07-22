@@ -1409,7 +1409,7 @@ const INSIGHT_ROWS = [
 function fmtInsightValue(val, type) {
   switch (type) {
     case "int": return numFmt(val);
-    case "dec2": return new Intl.NumberFormat("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val || 0);
+    case "dec2": return (val || 0).toFixed(2);
     case "cbm": return new Intl.NumberFormat("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val || 0) + " m\u00B3";
     case "rupiah": return "Rp " + numFmt(val);
     case "rupiahBig": return "Rp " + formatCompact(val);
@@ -1423,7 +1423,7 @@ function fmtGap(gap, type) {
   let body;
   switch (type) {
     case "int": body = numFmt(absVal); break;
-    case "dec2": body = new Intl.NumberFormat("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(absVal); break;
+    case "dec2": body = absVal.toFixed(2); break;
     case "cbm": body = new Intl.NumberFormat("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(absVal) + " m\u00B3"; break;
     case "rupiah": body = "Rp " + numFmt(absVal); break;
     case "rupiahBig": body = "Rp " + formatCompact(absVal); break;
