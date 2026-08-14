@@ -261,6 +261,7 @@ function renderAll() {
   renderSidebarCounts();
   renderLegendAndMap();
   renderPageTitle();
+  renderOverviewComparisonTables();
   if (isMppViewActive()) renderMppView();
   if (isInsightViewActive()) renderInsightView();
 }
@@ -436,6 +437,7 @@ function selectSite(key, btnEl) {
   document.getElementById("btn-site-scope").textContent = title;
   renderKpis();
   renderLegendAndMap();
+  renderOverviewComparisonTables();
   if (isMppViewActive()) renderMppView();
   if (isInsightViewActive()) renderInsightView();
 }
@@ -1974,6 +1976,113 @@ function renderHighDemandTable() {
       <td>${r.pctIns.toFixed(0)}%</td>
     </tr>
   `).join("");
+}
+
+// ---------------- OVERVIEW -- Tabel Perbandingan MoM/YoY per Hub ----------------
+
+const OV_TABLE_METRICS = [
+  ["Total Insentif", "insentif", "rupiahBig"],
+  ["Total DO", "do", "int"],
+  ["Trip", "trip", "int"],
+  ["DO/Trip", "do_trip", "dec2"],
+  ["DP/Trip", "dp_trip", "dec2"],
+  ["UJP", "ujp", "rupiahBig"],
+  ["UJP/Trip", "ujp_trip", "rupiah"],
+];
+
+function hubMetricsForRange(hubKey, fromD, toD) {
+  let doTotal = 0, dp = 0, trip = 0, ujp = 0, insentif = 0;
+  (RAW[hubKey] || []).forEach((r) => {
+    const d = parseTanggal(r["Tanggal"]);
+    if (!d || d < fromD || d > toD) return;
+    trip++;
+    doTotal += toNumber(r["Jumlah_do"]);
+    dp += toNumber(r["jumlah_titik"]);
+    ujp += toNumber(r["UJP"]);
+    insentif += toNumber(r["Insentif Ref"]);
+  });
+  const safeDiv = (a, b) => (b ? a / b : 0);
+  return { insentif, do: doTotal, dp, trip, do_trip: safeDiv(doTotal, trip), dp_trip: safeDiv(dp, trip), ujp, ujp_trip: safeDiv(ujp, trip) };
+}
+
+function ovGrowthHtml(activeVal, prevVal) {
+  if (!prevVal) return "";
+  const pct = ((activeVal - prevVal) / prevVal) * 100;
+  if (!isFinite(pct)) return "";
+  const cls = pct >= 0 ? "up" : "down";
+  const arrow = pct >= 0 ? "\u25B2" : "\u25BC";
+  return `<span class="ov-growth ${cls}">${arrow}${Math.abs(pct).toFixed(1)}%</span>`;
+}
+
+function renderOverviewComparisonTables() {
+  const periods = getInsightPeriods();
+  renderOvTable("mom", periods.active, periods.prev, periods.momLabel);
+  renderOvTable("yoy", periods.active, periods.yoy, "YoY");
+}
+
+function renderOvTable(which, activePeriod, comparePeriod, label) {
+  document.getElementById(`ov-${which}-title`).textContent =
+    which === "mom" ? `Tabel Perbandingan ${label} per Hub` : "Tabel Perbandingan YoY per Hub";
+  document.getElementById(`ov-${which}-sub`).textContent =
+    `${activePeriod.label} vs ${comparePeriod.label} (${label})`;
+
+  const hubKeys = currentSite === "all" ? HUBS.map((h) => h.key) : [currentSite];
+  const showTotal = currentSite === "all";
+
+  // Header baris 1: label blok periode (colspan 7 tiap blok)
+  document.getElementById(`ov-${which}-head-1`).innerHTML = `
+    <th class="ov-hub-col">HUB</th>
+    <th colspan="${OV_TABLE_METRICS.length}">${activePeriod.label}</th>
+    <th colspan="${OV_TABLE_METRICS.length}" class="ov-block-start">${comparePeriod.label}</th>
+  `;
+  // Header baris 2: nama metrik, diulang 2x
+  document.getElementById(`ov-${which}-head-2`).innerHTML = `
+    <th class="ov-hub-col"></th>
+    ${OV_TABLE_METRICS.map((m) => `<th>${m[0]}</th>`).join("")}
+    ${OV_TABLE_METRICS.map((m, i) => `<th${i === 0 ? ' class="ov-block-start"' : ""}>${m[0]}</th>`).join("")}
+  `;
+
+  const rowsData = hubKeys.map((hubKey) => {
+    const hub = HUBS.find((h) => h.key === hubKey);
+    const active = hubMetricsForRange(hubKey, activePeriod.from, activePeriod.to);
+    const compare = hubMetricsForRange(hubKey, comparePeriod.from, comparePeriod.to);
+    return { label: hub ? hub.label : hubKey, active, compare };
+  });
+
+  let totalActive = null, totalCompare = null;
+  if (showTotal) {
+    totalActive = { insentif: 0, do: 0, dp: 0, trip: 0, ujp: 0 };
+    totalCompare = { insentif: 0, do: 0, dp: 0, trip: 0, ujp: 0 };
+    rowsData.forEach((r) => {
+      ["insentif", "do", "dp", "trip", "ujp"].forEach((k) => {
+        totalActive[k] += r.active[k];
+        totalCompare[k] += r.compare[k];
+      });
+    });
+    const sd = (a, b) => (b ? a / b : 0);
+    totalActive.do_trip = sd(totalActive.do, totalActive.trip);
+    totalActive.ujp_trip = sd(totalActive.ujp, totalActive.trip);
+    totalActive.dp_trip = sd(totalActive.dp, totalActive.trip);
+    totalCompare.do_trip = sd(totalCompare.do, totalCompare.trip);
+    totalCompare.ujp_trip = sd(totalCompare.ujp, totalCompare.trip);
+    totalCompare.dp_trip = sd(totalCompare.dp, totalCompare.trip);
+  }
+
+  const renderRow = (label, active, compare, isTotal) => `
+    <tr${isTotal ? ' class="ov-total-row"' : ""}>
+      <td class="ov-hub-col">${isTotal ? "TOTAL" : "Hub " + escapeHtml(label)}</td>
+      ${OV_TABLE_METRICS.map((m) => {
+        const val = active[m[1]];
+        const growth = ovGrowthHtml(val, compare[m[1]]);
+        return `<td>${fmtInsightValue(val, m[2])}${growth}</td>`;
+      }).join("")}
+      ${OV_TABLE_METRICS.map((m, i) => `<td${i === 0 ? ' class="ov-block-start"' : ""}>${fmtInsightValue(compare[m[1]], m[2])}</td>`).join("")}
+    </tr>
+  `;
+
+  let bodyHtml = rowsData.map((r) => renderRow(r.label, r.active, r.compare, false)).join("");
+  if (showTotal) bodyHtml += renderRow("", totalActive, totalCompare, true);
+  document.getElementById(`ov-${which}-body`).innerHTML = bodyHtml;
 }
 
 // ---------------- INIT ----------------
