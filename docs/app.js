@@ -2011,7 +2011,7 @@ function ovGrowthHtml(activeVal, prevVal) {
   if (!isFinite(pct)) return "";
   const cls = pct >= 0 ? "up" : "down";
   const arrow = pct >= 0 ? "\u25B2" : "\u25BC";
-  return `<span class="ov-growth ${cls}">${arrow}${Math.abs(pct).toFixed(1)}%</span>`;
+  return `<div class="ov-growth ${cls}">${arrow}${Math.abs(pct).toFixed(1)}%</div>`;
 }
 
 function renderOverviewComparisonTables() {
@@ -2074,7 +2074,7 @@ function renderOvTable(which, activePeriod, comparePeriod, label) {
       ${OV_TABLE_METRICS.map((m) => {
         const val = active[m[1]];
         const growth = ovGrowthHtml(val, compare[m[1]]);
-        return `<td>${fmtInsightValue(val, m[2])}${growth}</td>`;
+        return `<td><div class="ov-value">${fmtInsightValue(val, m[2])}</div>${growth}</td>`;
       }).join("")}
       ${OV_TABLE_METRICS.map((m, i) => `<td${i === 0 ? ' class="ov-block-start"' : ""}>${fmtInsightValue(compare[m[1]], m[2])}</td>`).join("")}
     </tr>
