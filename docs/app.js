@@ -709,6 +709,39 @@ const totalLabelPlugin = {
   },
 };
 
+// Plugin custom Chart.js: gambar label PERSENTASE di dalam tiap segmen
+// bar bertumpuk (High/Mid/Low), dihitung dari porsi segmen itu terhadap
+// total bar bulan itu.
+const segmentPercentPlugin = {
+  id: "segmentPercentLabel",
+  afterDatasetsDraw(chart) {
+    const { ctx } = chart;
+    const meta0 = chart.getDatasetMeta(0);
+    if (!meta0 || !meta0.data) return;
+    ctx.save();
+    ctx.font = "700 10px Inter, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#ffffff";
+    meta0.data.forEach((_, i) => {
+      let total = 0;
+      chart.data.datasets.forEach((ds) => { total += ds.data[i] || 0; });
+      if (!total) return;
+      chart.data.datasets.forEach((ds, dsIdx) => {
+        const val = ds.data[i] || 0;
+        if (!val) return;
+        const pct = (val / total) * 100;
+        if (pct < 5) return; // segmen terlalu tipis, skip biar label ga numpuk/kepotong
+        const bar = chart.getDatasetMeta(dsIdx).data[i];
+        if (!bar) return;
+        const centerY = (bar.y + bar.base) / 2;
+        ctx.fillText(pct.toFixed(0) + "%", bar.x, centerY);
+      });
+    });
+    ctx.restore();
+  },
+};
+
 function renderMppMonthlyChart() {
   const rows = mppRowsAllMonths();
   const entries = personMonthTotals(rows); // [{nik, month, total}]
@@ -749,7 +782,7 @@ function renderMppMonthlyChart() {
         scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } },
         plugins: { legend: { position: "top", labels: { boxWidth: 10, font: { size: 11 } } } },
       },
-      plugins: [totalLabelPlugin],
+      plugins: [totalLabelPlugin, segmentPercentPlugin],
     });
   } catch (err) {
     console.error("Gagal render grafik bulanan:", err);
