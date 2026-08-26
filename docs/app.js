@@ -2016,12 +2016,31 @@ function renderHighDemandTable() {
 const OV_TABLE_METRICS = [
   ["Total Insentif", "insentif", "rupiahBig"],
   ["Total DO", "do", "int"],
+  ["Total DP", "dp", "int"],
   ["Trip", "trip", "int"],
-  ["DO/Trip", "do_trip", "dec2"],
   ["DP/Trip", "dp_trip", "dec2"],
+  ["DO/DP", "do_dp", "dec2"],
   ["UJP", "ujp", "rupiahBig"],
-  ["UJP/Trip", "ujp_trip", "rupiah"],
 ];
+
+// Lebar kolom per tipe data -- currency ("Rp 23.1 Jt") butuh ruang lebih
+// lebar dibanding angka pendek ("246", "9.11"). Bobot ini dipakai buat
+// bikin <colgroup> proporsional, jadi kalau OV_TABLE_METRICS berubah lagi
+// (nambah/hapus kolom), lebar kolomnya otomatis nyesuain tanpa perlu
+// oprek CSS manual.
+const OV_TYPE_WIDTH_WEIGHT = { rupiahBig: 15, int: 10, dec2: 9 };
+const OV_HUB_WIDTH_WEIGHT = 15;
+
+function buildOvColgroupHtml() {
+  const perBlockWeight = OV_TABLE_METRICS.reduce((sum, m) => sum + OV_TYPE_WIDTH_WEIGHT[m[2]], 0);
+  const totalWeight = OV_HUB_WIDTH_WEIGHT + perBlockWeight * 2;
+  const pct = (w) => (w / totalWeight * 100).toFixed(2) + "%";
+  let html = `<col style="width:${pct(OV_HUB_WIDTH_WEIGHT)}">`;
+  for (let block = 0; block < 2; block++) {
+    html += OV_TABLE_METRICS.map((m) => `<col style="width:${pct(OV_TYPE_WIDTH_WEIGHT[m[2]])}">`).join("");
+  }
+  return html;
+}
 
 function hubMetricsForRange(hubKey, fromD, toD) {
   let doTotal = 0, dp = 0, trip = 0, ujp = 0, insentif = 0;
@@ -2035,7 +2054,7 @@ function hubMetricsForRange(hubKey, fromD, toD) {
     insentif += toNumber(r["Insentif Ref"]);
   });
   const safeDiv = (a, b) => (b ? a / b : 0);
-  return { insentif, do: doTotal, dp, trip, do_trip: safeDiv(doTotal, trip), dp_trip: safeDiv(dp, trip), ujp, ujp_trip: safeDiv(ujp, trip) };
+  return { insentif, do: doTotal, dp, trip, do_trip: safeDiv(doTotal, trip), do_dp: safeDiv(doTotal, dp), dp_trip: safeDiv(dp, trip), ujp, ujp_trip: safeDiv(ujp, trip) };
 }
 
 function ovGrowthHtml(activeVal, prevVal) {
@@ -2058,6 +2077,8 @@ function renderOvTable(which, activePeriod, comparePeriod, label) {
     which === "mom" ? `Tabel Perbandingan ${label} per Hub` : "Tabel Perbandingan YoY per Hub";
   document.getElementById(`ov-${which}-sub`).textContent =
     `${activePeriod.label} vs ${comparePeriod.label} (${label})`;
+
+  document.getElementById(`ov-${which}-colgroup`).innerHTML = buildOvColgroupHtml();
 
   const hubKeys = currentSite === "all" ? HUBS.map((h) => h.key) : [currentSite];
   const showTotal = currentSite === "all";
@@ -2094,9 +2115,11 @@ function renderOvTable(which, activePeriod, comparePeriod, label) {
     });
     const sd = (a, b) => (b ? a / b : 0);
     totalActive.do_trip = sd(totalActive.do, totalActive.trip);
+    totalActive.do_dp = sd(totalActive.do, totalActive.dp);
     totalActive.ujp_trip = sd(totalActive.ujp, totalActive.trip);
     totalActive.dp_trip = sd(totalActive.dp, totalActive.trip);
     totalCompare.do_trip = sd(totalCompare.do, totalCompare.trip);
+    totalCompare.do_dp = sd(totalCompare.do, totalCompare.dp);
     totalCompare.ujp_trip = sd(totalCompare.ujp, totalCompare.trip);
     totalCompare.dp_trip = sd(totalCompare.dp, totalCompare.trip);
   }
