@@ -742,24 +742,29 @@ const segmentPercentPlugin = {
   },
 };
 
+// Grafik "Kategori MPP per Hub" -- SELALU bandingin semua hub berdampingan
+// (filter Site di topbar di-ignore khusus buat chart ini, sama kayak Tabel
+// Perbandingan MoM/YoY per Hub), tapi TETAP menghormati filter Bulan/Periode
+// di topbar (1 bulan, custom range, H1/H2/Q1-Q4, atau "Semua Bulan" =
+// setahun penuh) lewat getFilteredRows().
 function renderMppMonthlyChart() {
-  const rows = mppRowsAllMonths();
-  const entries = personMonthTotals(rows); // [{nik, month, total}]
-
-  const byMonth = {}; // "YYYY-MM" -> {high,mid,low}
-  entries.forEach((e) => {
-    if (!byMonth[e.month]) byMonth[e.month] = { high: 0, mid: 0, low: 0 };
-    byMonth[e.month][mppCategory(e.total)]++;
+  const byHub = {}; // hubKey -> {high,mid,low}
+  HUBS.forEach((h) => {
+    const rows = getFilteredRows(h.key);
+    const entries = personMonthTotals(rows); // [{nik, month, total}]
+    const counts = { high: 0, mid: 0, low: 0 };
+    entries.forEach((e) => { counts[mppCategory(e.total)]++; });
+    byHub[h.key] = counts;
   });
 
-  const sortedKeys = Object.keys(byMonth).sort();
-  const monthLabels = sortedKeys.map((mk) => MONTH_NAMES_ID[parseInt(mk.split("-")[1], 10) - 1]);
-  const highData = sortedKeys.map((mk) => byMonth[mk].high);
-  const midData = sortedKeys.map((mk) => byMonth[mk].mid);
-  const lowData = sortedKeys.map((mk) => byMonth[mk].low);
+  const hubLabels = HUBS.map((h) => h.label);
+  const highData = HUBS.map((h) => byHub[h.key].high);
+  const midData = HUBS.map((h) => byHub[h.key].mid);
+  const lowData = HUBS.map((h) => byHub[h.key].low);
 
+  const monthLabel = document.getElementById("month-select").selectedOptions[0]?.textContent || "Semua Bulan";
   document.getElementById("mpp-monthly-sub").textContent =
-    `${HUBS.length} site \u00B7 Tahun ${currentYear} \u00B7 ${monthLabels.length ? monthLabels.join(", ") : "belum ada data"}`;
+    `${HUBS.length} site \u00B7 Tahun ${currentYear} \u00B7 ${monthLabel}`;
 
   const wrap = document.querySelector("#mpp-monthly-chart").closest(".chart-canvas-wrap");
   try {
@@ -768,7 +773,7 @@ function renderMppMonthlyChart() {
     mppMonthlyChart = new Chart(ctx, {
       type: "bar",
       data: {
-        labels: monthLabels,
+        labels: hubLabels,
         datasets: [
           { label: "High >1.5Jt", data: highData, backgroundColor: "#ef4444", stack: "s" },
           { label: "Mid 500Rb-1.5Jt", data: midData, backgroundColor: "#f59e0b", stack: "s" },
